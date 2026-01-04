@@ -8,6 +8,9 @@ import {
   TextInput,
   ActivityIndicator,
   Keyboard,
+  Modal,
+  Pressable,
+  ScrollView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -17,7 +20,7 @@ import { SafeContainer } from '../../components/layout';
 import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { bibleService } from '../../services';
-import type { Verse } from '../../types/database';
+import type { Verse, Book } from '../../types/database';
 
 type Props = NativeStackScreenProps<SearchStackParamList, 'Search'>;
 
@@ -39,6 +42,12 @@ export function SearchScreen({ navigation }: Props) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [bookNames, setBookNames] = useState<Record<number, string>>({});
 
+  // 책 필터 관련 상태
+  const [books, setBooks] = useState<(Book & { book_name: string })[]>([]);
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
+  const [selectedBookName, setSelectedBookName] = useState<string>('전체');
+  const [showBookFilter, setShowBookFilter] = useState(false);
+
   // 책 이름 로드
   useEffect(() => {
     loadBookNames();
@@ -46,12 +55,13 @@ export function SearchScreen({ navigation }: Props) {
 
   const loadBookNames = async () => {
     try {
-      const books = await bibleService.getBooks(language);
+      const bookList = await bibleService.getBooks(language);
       const names: Record<number, string> = {};
-      books.forEach((book) => {
+      bookList.forEach((book) => {
         names[book.book_id] = book.book_name;
       });
       setBookNames(names);
+      setBooks(bookList as (Book & { book_name: string })[]);
     } catch (error) {
       console.error('Error loading book names:', error);
     }
@@ -74,12 +84,29 @@ export function SearchScreen({ navigation }: Props) {
     setHasSearched(true);
 
     try {
+      // 책 필터가 있으면 해당 책에서만 검색
+      const bookIdFilter = selectedBookId || undefined;
+
       // FTS5 검색 시도 (전체 결과 표시)
-      let searchResults = await bibleService.search(bibleVersion, trimmedQuery, language);
+      let searchResults = await bibleService.search(
+        bibleVersion,
+        trimmedQuery,
+        language,
+        500,
+        0,
+        bookIdFilter
+      );
 
       // FTS5 결과 없으면 단순 검색
       if (searchResults.length === 0) {
-        searchResults = await bibleService.searchSimple(bibleVersion, trimmedQuery, language);
+        searchResults = await bibleService.searchSimple(
+          bibleVersion,
+          trimmedQuery,
+          language,
+          500,
+          0,
+          bookIdFilter
+        );
       }
 
       // 책 이름 추가
@@ -122,6 +149,19 @@ export function SearchScreen({ navigation }: Props) {
     setQuery('');
     setResults([]);
     setHasSearched(false);
+  };
+
+  // 책 선택
+  const handleSelectBook = (bookId: number | null, bookName: string) => {
+    setSelectedBookId(bookId);
+    setSelectedBookName(bookName);
+    setShowBookFilter(false);
+  };
+
+  // 필터 초기화
+  const handleClearFilter = () => {
+    setSelectedBookId(null);
+    setSelectedBookName('전체');
   };
 
   // 결과 클릭
@@ -200,6 +240,28 @@ export function SearchScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* 책 필터 */}
+        <View style={[styles.filterContainer, { backgroundColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.filterButton, { backgroundColor: colors.background, borderColor: selectedBookId ? colors.primary : colors.border }]}
+            onPress={() => setShowBookFilter(true)}
+          >
+            <Text style={styles.filterIcon}>📖</Text>
+            <Text style={[styles.filterText, { color: selectedBookId ? colors.primary : colors.text }]}>
+              {selectedBookName}
+            </Text>
+            <Text style={{ color: colors.textSecondary }}>▼</Text>
+          </TouchableOpacity>
+          {selectedBookId && (
+            <TouchableOpacity
+              style={[styles.clearFilterButton, { backgroundColor: colors.error + '20' }]}
+              onPress={handleClearFilter}
+            >
+              <Text style={[styles.clearFilterText, { color: colors.error }]}>✕ 필터 해제</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* 검색 중 */}
         {isSearching && (
           <View style={styles.loadingContainer}>
@@ -216,7 +278,7 @@ export function SearchScreen({ navigation }: Props) {
             <View style={styles.resultHeader}>
               <Text style={[styles.resultCount, { color: colors.textSecondary }]}>
                 {results.length > 0
-                  ? `${results.length}개의 결과`
+                  ? `${results.length}개의 결과${selectedBookId ? ` (${selectedBookName})` : ''}`
                   : '검색 결과가 없습니다'}
               </Text>
             </View>
@@ -283,6 +345,89 @@ export function SearchScreen({ navigation }: Props) {
           </View>
         )}
       </View>
+
+      {/* 책 선택 모달 */}
+      <Modal
+        visible={showBookFilter}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBookFilter(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowBookFilter(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>검색할 책 선택</Text>
+              <TouchableOpacity onPress={() => setShowBookFilter(false)}>
+                <Text style={{ color: colors.textSecondary, fontSize: 20 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.bookList} showsVerticalScrollIndicator={false}>
+              {/* 전체 선택 옵션 */}
+              <TouchableOpacity
+                style={[
+                  styles.bookItem,
+                  { borderBottomColor: colors.border },
+                  selectedBookId === null && { backgroundColor: colors.primary + '20' },
+                ]}
+                onPress={() => handleSelectBook(null, '전체')}
+              >
+                <Text style={[styles.bookItemText, { color: colors.text }]}>📚 전체 성경</Text>
+                {selectedBookId === null && (
+                  <Text style={{ color: colors.primary }}>✓</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* 구약 */}
+              <View style={[styles.testamentHeader, { backgroundColor: colors.background }]}>
+                <Text style={[styles.testamentTitle, { color: colors.textSecondary }]}>구약 (39권)</Text>
+              </View>
+              {books.filter(b => b.book_id <= 39).map((book) => (
+                <TouchableOpacity
+                  key={book.book_id}
+                  style={[
+                    styles.bookItem,
+                    { borderBottomColor: colors.border },
+                    selectedBookId === book.book_id && { backgroundColor: colors.primary + '20' },
+                  ]}
+                  onPress={() => handleSelectBook(book.book_id, book.book_name)}
+                >
+                  <Text style={[styles.bookItemText, { color: colors.text }]}>{book.book_name}</Text>
+                  {selectedBookId === book.book_id && (
+                    <Text style={{ color: colors.primary }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {/* 신약 */}
+              <View style={[styles.testamentHeader, { backgroundColor: colors.background }]}>
+                <Text style={[styles.testamentTitle, { color: colors.textSecondary }]}>신약 (27권)</Text>
+              </View>
+              {books.filter(b => b.book_id >= 40).map((book) => (
+                <TouchableOpacity
+                  key={book.book_id}
+                  style={[
+                    styles.bookItem,
+                    { borderBottomColor: colors.border },
+                    selectedBookId === book.book_id && { backgroundColor: colors.primary + '20' },
+                  ]}
+                  onPress={() => handleSelectBook(book.book_id, book.book_name)}
+                >
+                  <Text style={[styles.bookItemText, { color: colors.text }]}>{book.book_name}</Text>
+                  {selectedBookId === book.book_id && (
+                    <Text style={{ color: colors.primary }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeContainer>
   );
 }
@@ -425,5 +570,84 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 24,
     textAlign: 'center',
+  },
+  // 필터 스타일
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterIcon: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  filterText: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  clearFilterButton: {
+    marginLeft: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  clearFilterText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // 모달 스타일
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    height: '80%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  bookList: {
+    flex: 1,
+  },
+  testamentHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  testamentTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  bookItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  bookItemText: {
+    fontSize: 16,
   },
 });

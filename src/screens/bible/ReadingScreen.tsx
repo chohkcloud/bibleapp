@@ -10,6 +10,9 @@ import {
   Pressable,
   Platform,
   StatusBar,
+  TextInput,
+  KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BibleStackParamList } from '../../navigation/types';
@@ -17,7 +20,7 @@ import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { useBibleStore, useSettingsStore } from '../../store';
 import { bibleService, memoService } from '../../services';
-import type { Verse, Highlight } from '../../types/database';
+import type { Verse, Highlight, Memo } from '../../types/database';
 
 // 상태바 높이 계산
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 44;
@@ -29,6 +32,8 @@ interface VerseWithMeta extends Verse {
   isHighlighted?: boolean;
   highlightColor?: string;
   hasMemo?: boolean;
+  memoContent?: string;
+  memoId?: string;
 }
 
 const HIGHLIGHT_COLORS = [
@@ -53,6 +58,9 @@ export function ReadingScreen({ route, navigation }: Props) {
   const [totalChapters, setTotalChapters] = useState(0);
   const [selectedVerse, setSelectedVerse] = useState<VerseWithMeta | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [showNotes, setShowNotes] = useState(true); // 주석 표시 여부
 
   // 기본 헤더 숨기기
   useLayoutEffect(() => {
@@ -91,19 +99,28 @@ export function ReadingScreen({ route, navigation }: Props) {
       const bookmarks = await memoService.getAllBookmarks();
       const bookmarkSet = new Set(bookmarks.map((b) => b.verse_id));
 
-      // 메모 확인
+      // 메모 확인 - 내용도 함께 로드
       const memos = await memoService.getMemos({ bookId, chapter });
-      const memoVerseNums = new Set(memos.map((m) => m.verse_num));
+      const memoMap = new Map<number, Memo>();
+      memos.forEach((m) => {
+        // 같은 구절에 여러 메모가 있을 수 있으므로 가장 최근 것 사용
+        if (!memoMap.has(m.verse_num) || new Date(m.updated_at) > new Date(memoMap.get(m.verse_num)!.updated_at)) {
+          memoMap.set(m.verse_num, m);
+        }
+      });
 
       // 메타 정보 추가
       const versesWithMeta: VerseWithMeta[] = chapterVerses.map((verse) => {
         const highlight = highlightMap.get(verse.verse_id);
+        const memo = memoMap.get(verse.verse_num);
         return {
           ...verse,
           isBookmarked: bookmarkSet.has(verse.verse_id),
           isHighlighted: !!highlight,
           highlightColor: highlight?.color,
-          hasMemo: memoVerseNums.has(verse.verse_num),
+          hasMemo: !!memo,
+          memoContent: memo?.content,
+          memoId: memo?.memo_id,
         };
       });
 
@@ -126,6 +143,8 @@ export function ReadingScreen({ route, navigation }: Props) {
   // 구절 선택
   const handleVersePress = (verse: VerseWithMeta) => {
     setSelectedVerse(verse);
+    setNoteText(verse.memoContent || '');
+    setIsEditingNote(false);
     setShowActionModal(true);
   };
 
@@ -159,7 +178,7 @@ export function ReadingScreen({ route, navigation }: Props) {
     setShowActionModal(false);
   };
 
-  // 메모 작성
+  // 메모 작성 (기존 - 상세 화면으로 이동)
   const handleWriteMemo = () => {
     if (!selectedVerse) return;
     setShowActionModal(false);
@@ -167,6 +186,62 @@ export function ReadingScreen({ route, navigation }: Props) {
       screen: 'MemoEdit',
       params: { verseId: selectedVerse.verse_id },
     });
+  };
+
+  // 주석 저장 (인라인)
+  const handleSaveNote = async () => {
+    if (!selectedVerse || !noteText.trim()) return;
+
+    try {
+      if (selectedVerse.memoId) {
+        // 기존 메모 수정
+        await memoService.updateMemo(selectedVerse.memoId, { content: noteText.trim() });
+      } else {
+        // 새 메모 생성
+        await memoService.createMemo({
+          verseId: selectedVerse.verse_id,
+          bibleId: bibleVersion,
+          bookId: bookId,
+          chapter: chapter,
+          verseNum: selectedVerse.verse_num,
+          content: noteText.trim(),
+        });
+      }
+      setIsEditingNote(false);
+      setShowActionModal(false);
+      loadData(); // 새로고침
+    } catch (error) {
+      console.error('Error saving note:', error);
+      Alert.alert('오류', '주석 저장에 실패했습니다.');
+    }
+  };
+
+  // 주석 삭제
+  const handleDeleteNote = () => {
+    if (!selectedVerse?.memoId) return;
+
+    Alert.alert(
+      '주석 삭제',
+      '이 주석을 삭제하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await memoService.deleteMemo(selectedVerse.memoId!);
+              setNoteText('');
+              setShowActionModal(false);
+              loadData();
+            } catch (error) {
+              console.error('Error deleting note:', error);
+              Alert.alert('오류', '주석 삭제에 실패했습니다.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // 이전/다음 장 이동
@@ -212,6 +287,14 @@ export function ReadingScreen({ route, navigation }: Props) {
           {bookName} {chapter}장
         </Text>
         <TouchableOpacity
+          style={styles.noteToggleButton}
+          onPress={() => setShowNotes(!showNotes)}
+        >
+          <Text style={[styles.noteToggleText, { color: showNotes ? colors.primary : colors.textSecondary }]}>
+            {showNotes ? '📝' : '📝'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.listButton}
           onPress={() => navigation.navigate('ChapterSelect', { bookId, bookName, chapters: totalChapters })}
         >
@@ -234,35 +317,47 @@ export function ReadingScreen({ route, navigation }: Props) {
           {/* 구절 목록 */}
           <View style={styles.content}>
             {verses.map((verse) => (
-              <TouchableOpacity
-                key={verse.verse_id}
-                style={[
-                  styles.verseContainer,
-                  verse.isHighlighted && {
-                    backgroundColor: verse.highlightColor + '40',
-                    borderRadius: 4,
-                    marginHorizontal: -4,
-                    paddingHorizontal: 4,
-                  },
-                ]}
-                onPress={() => handleVersePress(verse)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.verseNumberContainer}>
-                  <Text style={[styles.verseNumber, { color: colors.primary }]}>
-                    {verse.verse_num}
+              <View key={verse.verse_id}>
+                <TouchableOpacity
+                  style={[
+                    styles.verseContainer,
+                    verse.isHighlighted && {
+                      backgroundColor: verse.highlightColor + '40',
+                      borderRadius: 4,
+                      marginHorizontal: -4,
+                      paddingHorizontal: 4,
+                    },
+                  ]}
+                  onPress={() => handleVersePress(verse)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.verseNumberContainer}>
+                    <Text style={[styles.verseNumber, { color: colors.primary }]}>
+                      {verse.verse_num}
+                    </Text>
+                    {verse.isBookmarked && (
+                      <Text style={styles.bookmarkIcon}>🔖</Text>
+                    )}
+                    {verse.hasMemo && (
+                      <Text style={styles.memoIcon}>📝</Text>
+                    )}
+                  </View>
+                  <Text style={[styles.verseText, { color: colors.text, fontSize }]}>
+                    {verse.text}
                   </Text>
-                  {verse.isBookmarked && (
-                    <Text style={styles.bookmarkIcon}>🔖</Text>
-                  )}
-                  {verse.hasMemo && (
-                    <Text style={styles.memoIcon}>📝</Text>
-                  )}
-                </View>
-                <Text style={[styles.verseText, { color: colors.text, fontSize }]}>
-                  {verse.text}
-                </Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
+                {/* 인라인 주석 표시 */}
+                {showNotes && verse.hasMemo && verse.memoContent && (
+                  <TouchableOpacity
+                    style={[styles.inlineNote, { backgroundColor: colors.primary + '10', borderLeftColor: colors.primary }]}
+                    onPress={() => handleVersePress(verse)}
+                  >
+                    <Text style={[styles.inlineNoteText, { color: colors.textSecondary }]} numberOfLines={2}>
+                      💬 {verse.memoContent}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </View>
 
@@ -301,13 +396,17 @@ export function ReadingScreen({ route, navigation }: Props) {
           animationType="slide"
           onRequestClose={() => setShowActionModal(false)}
         >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setShowActionModal(false)}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
           >
-            <View
-              style={[styles.modalContent, { backgroundColor: colors.surface }]}
+            <Pressable
+              style={styles.modalOverlay}
+              onPress={() => setShowActionModal(false)}
             >
+              <View
+                style={[styles.modalContent, { backgroundColor: colors.surface }]}
+              >
               {selectedVerse && (
                 <>
                   {/* 선택된 구절 */}
@@ -351,6 +450,47 @@ export function ReadingScreen({ route, navigation }: Props) {
                     </View>
                   </View>
 
+                  {/* 주석 입력 섹션 */}
+                  <View style={styles.noteSection}>
+                    <View style={styles.noteSectionHeader}>
+                      <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                        ✏️ 주석
+                      </Text>
+                      {selectedVerse.memoId && (
+                        <TouchableOpacity onPress={handleDeleteNote}>
+                          <Text style={[styles.deleteNoteText, { color: colors.error }]}>삭제</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <TextInput
+                      style={[
+                        styles.noteInput,
+                        {
+                          backgroundColor: colors.background,
+                          color: colors.text,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      placeholder="이 구절에 대한 주석을 입력하세요..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={noteText}
+                      onChangeText={setNoteText}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                    {noteText.trim() !== (selectedVerse.memoContent || '') && noteText.trim() && (
+                      <TouchableOpacity
+                        style={[styles.saveNoteButton, { backgroundColor: colors.primary }]}
+                        onPress={handleSaveNote}
+                      >
+                        <Text style={styles.saveNoteButtonText}>
+                          {selectedVerse.memoId ? '주석 수정' : '주석 저장'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
                   {/* 액션 버튼 */}
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
@@ -366,14 +506,15 @@ export function ReadingScreen({ route, navigation }: Props) {
                       onPress={handleWriteMemo}
                     >
                       <Text style={[styles.actionButtonText, { color: colors.primary }]}>
-                        📝 묵상 작성
+                        📝 상세 묵상
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </>
               )}
             </View>
-          </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
     </View>
   );
@@ -457,6 +598,25 @@ const styles = StyleSheet.create({
   memoIcon: {
     fontSize: 10,
     marginTop: 2,
+  },
+  noteToggleButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  noteToggleText: {
+    fontSize: 18,
+  },
+  inlineNote: {
+    marginLeft: 32,
+    marginRight: 8,
+    marginBottom: 12,
+    padding: 10,
+    borderLeftWidth: 3,
+    borderRadius: 4,
+  },
+  inlineNoteText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   verseText: {
     flex: 1,
@@ -552,6 +712,39 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   actionButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  noteSection: {
+    marginBottom: 16,
+  },
+  noteSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  deleteNoteText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    minHeight: 80,
+    maxHeight: 120,
+  },
+  saveNoteButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveNoteButtonText: {
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
   },

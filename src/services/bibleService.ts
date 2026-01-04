@@ -198,17 +198,24 @@ class BibleService {
    * @param langId - 책 이름 표시 언어
    * @param limit - 결과 개수 제한 (기본 500, BUG-001 수정)
    * @param offset - 페이지네이션 오프셋 (기본 0)
+   * @param bookId - 특정 책에서만 검색 (선택)
    */
   async search(
     bibleId: string,
     query: string,
     langId: string,
     limit: number = 500,
-    offset: number = 0
+    offset: number = 0,
+    bookId?: number
   ): Promise<SearchResult[]> {
     try {
       if (!query || query.trim().length === 0) {
         return [];
+      }
+
+      // bookId가 있으면 단순 검색 사용 (FTS5는 bookId 필터 미지원)
+      if (bookId) {
+        return await searchVersesSimple(bibleId, query.trim(), langId, limit, offset, bookId);
       }
 
       // FTS5 검색 시도 (책 이름 검색 포함)
@@ -231,19 +238,21 @@ class BibleService {
    * 단순 검색 (LIKE) - 책 이름 검색 지원
    * @param limit - 기본 500 (BUG-001 수정)
    * @param offset - 페이지네이션 오프셋
+   * @param bookId - 특정 책에서만 검색 (선택)
    */
   async searchSimple(
     bibleId: string,
     query: string,
     langId: string,
     limit: number = 500,
-    offset: number = 0
+    offset: number = 0,
+    bookId?: number
   ): Promise<SearchResult[]> {
     try {
       if (!query || query.trim().length === 0) {
         return [];
       }
-      return await searchVersesSimple(bibleId, query.trim(), langId, limit, offset);
+      return await searchVersesSimple(bibleId, query.trim(), langId, limit, offset, bookId);
     } catch (error) {
       throw new AppError(
         ErrorCode.BIBLE_SEARCH_FAILED,
