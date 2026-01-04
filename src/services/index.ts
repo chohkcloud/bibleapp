@@ -19,3 +19,6 @@ export type { ShareTemplate, ShareTarget, ShareCardData, ShareResult } from './s
 export { bibleApiService } from './bibleApiService';
 export { bibleDownloadService } from './bibleDownloadService';
 export { bibleVersionService } from './bibleVersionService';
+
+// Backup Service
+export { backupService } from './backupService';

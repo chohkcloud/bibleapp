@@ -15,7 +15,7 @@ import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { CustomHeader } from '../../components/common';
 import { useSettingsStore, useAuthStore } from '../../store';
-import { authService } from '../../services';
+import { authService, backupService } from '../../services';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
 
@@ -78,6 +78,43 @@ export function SettingsScreen({ navigation }: Props) {
         },
       ]
     );
+  };
+
+  // 백업 생성
+  const handleBackup = async () => {
+    try {
+      const stats = await backupService.getDataStats();
+      Alert.alert(
+        '백업 생성',
+        `다음 데이터를 백업합니다:\n\n` +
+        `메모: ${stats.memoCount}개\n` +
+        `북마크: ${stats.bookmarkCount}개\n` +
+        `하이라이트: ${stats.highlightCount}개\n` +
+        `태그: ${stats.tagCount}개`,
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '백업',
+            onPress: async () => {
+              await backupService.createBackup();
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      Alert.alert('오류', '백업 생성에 실패했습니다.');
+    }
+  };
+
+  // 백업 복원
+  const handleRestore = async () => {
+    try {
+      await backupService.restoreBackup();
+    } catch (error) {
+      console.error('Error restoring backup:', error);
+      Alert.alert('오류', '백업 복원에 실패했습니다.');
+    }
   };
 
   // 데이터 초기화
@@ -250,8 +287,20 @@ export function SettingsScreen({ navigation }: Props) {
         {/* 데이터 관리 */}
         <SectionHeader title="데이터" />
         <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <SettingItem
+            icon="cloud-upload"
+            title="백업하기"
+            value="JSON 파일로 저장"
+            onPress={handleBackup}
+          />
+          <SettingItem
+            icon="cloud-download"
+            title="복원하기"
+            value="백업 파일에서 복원"
+            onPress={handleRestore}
+          />
           <TouchableOpacity
-            style={styles.settingItem}
+            style={[styles.settingItem, { borderBottomWidth: 0 }]}
             onPress={handleResetData}
           >
             <Ionicons name="trash" size={22} color={colors.error} />
