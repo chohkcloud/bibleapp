@@ -267,14 +267,14 @@ export async function getVerseById(verseId: number): Promise<Verse | null> {
 
 /**
  * 성경 전문 검색 (FTS5) - 책 이름 검색 지원
- * @param limit - 기본 500건 (BUG-001 수정)
+ * @param limit - 제한 없음 (전체 결과 표시)
  * @param offset - 페이지네이션용 오프셋
  */
 export async function searchVerses(
   bibleId: string,
   query: string,
   langId: string,
-  limit: number = 500,
+  limit: number = 50000,
   offset: number = 0
 ): Promise<SearchResult[]> {
   if (isWeb) {
@@ -304,14 +304,14 @@ export async function searchVerses(
 
 /**
  * 단순 텍스트 검색 (LIKE) - 책 이름 검색 지원
- * @param limit - 기본 500건 (BUG-001 수정)
+ * @param limit - 제한 없음 (전체 결과 표시)
  * @param offset - 페이지네이션용 오프셋
  */
 export async function searchVersesSimple(
   bibleId: string,
   query: string,
   langId: string,
-  limit: number = 500,
+  limit: number = 50000,
   offset: number = 0
 ): Promise<SearchResult[]> {
   if (isWeb) {
@@ -356,13 +356,13 @@ export async function searchVersesSimple(
 
 /**
  * BUG-002 수정: 책 이름으로 검색
- * 검색어가 책 이름과 매칭되면 해당 책의 첫 장 구절들 반환
+ * 검색어가 책 이름과 매칭되면 해당 책의 전체 구절들 반환
  */
 export async function searchByBookName(
   bibleId: string,
   query: string,
   langId: string,
-  limit: number = 500
+  limit: number = 50000
 ): Promise<SearchResult[]> {
   if (isWeb) {
     const matchingBook = MOCK_BOOK_NAMES.find(

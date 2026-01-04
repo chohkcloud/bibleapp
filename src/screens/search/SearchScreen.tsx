@@ -74,12 +74,12 @@ export function SearchScreen({ navigation }: Props) {
     setHasSearched(true);
 
     try {
-      // FTS5 검색 시도
-      let searchResults = await bibleService.search(bibleVersion, trimmedQuery, language, 100);
+      // FTS5 검색 시도 (전체 결과 표시)
+      let searchResults = await bibleService.search(bibleVersion, trimmedQuery, language);
 
       // FTS5 결과 없으면 단순 검색
       if (searchResults.length === 0) {
-        searchResults = await bibleService.searchSimple(bibleVersion, trimmedQuery, language, 100);
+        searchResults = await bibleService.searchSimple(bibleVersion, trimmedQuery, language);
       }
 
       // 책 이름 추가

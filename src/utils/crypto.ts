@@ -33,20 +33,115 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function stringToBytes(str: string): Uint8Array { return new TextEncoder().encode(str); }
-function bytesToString(bytes: Uint8Array): string { return new TextDecoder().decode(bytes); }
+// UTF-8 인코딩 (한글 지원) - React Native 호환
+function stringToBytes(str: string): Uint8Array {
+  // TextEncoder가 있으면 사용
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(str);
+  }
+  // 수동 UTF-8 인코딩 (React Native 폴백)
+  const utf8: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    let charCode = str.charCodeAt(i);
+    // 서로게이트 페어 처리 (이모지 등)
+    if (charCode >= 0xD800 && charCode <= 0xDBFF && i + 1 < str.length) {
+      const next = str.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        charCode = ((charCode - 0xD800) << 10) + (next - 0xDC00) + 0x10000;
+        i++;
+      }
+    }
+    if (charCode < 0x80) {
+      utf8.push(charCode);
+    } else if (charCode < 0x800) {
+      utf8.push(0xC0 | (charCode >> 6));
+      utf8.push(0x80 | (charCode & 0x3F));
+    } else if (charCode < 0x10000) {
+      utf8.push(0xE0 | (charCode >> 12));
+      utf8.push(0x80 | ((charCode >> 6) & 0x3F));
+      utf8.push(0x80 | (charCode & 0x3F));
+    } else {
+      utf8.push(0xF0 | (charCode >> 18));
+      utf8.push(0x80 | ((charCode >> 12) & 0x3F));
+      utf8.push(0x80 | ((charCode >> 6) & 0x3F));
+      utf8.push(0x80 | (charCode & 0x3F));
+    }
+  }
+  return new Uint8Array(utf8);
+}
+
+// UTF-8 디코딩 (한글 지원) - React Native 호환
+function bytesToString(bytes: Uint8Array): string {
+  // TextDecoder가 있으면 사용
+  if (typeof TextDecoder !== 'undefined') {
+    return new TextDecoder().decode(bytes);
+  }
+  // 수동 UTF-8 디코딩 (React Native 폴백)
+  let result = '';
+  let i = 0;
+  while (i < bytes.length) {
+    const byte1 = bytes[i++];
+    if (byte1 < 0x80) {
+      result += String.fromCharCode(byte1);
+    } else if ((byte1 & 0xE0) === 0xC0) {
+      const byte2 = bytes[i++] & 0x3F;
+      result += String.fromCharCode(((byte1 & 0x1F) << 6) | byte2);
+    } else if ((byte1 & 0xF0) === 0xE0) {
+      const byte2 = bytes[i++] & 0x3F;
+      const byte3 = bytes[i++] & 0x3F;
+      result += String.fromCharCode(((byte1 & 0x0F) << 12) | (byte2 << 6) | byte3);
+    } else if ((byte1 & 0xF8) === 0xF0) {
+      const byte2 = bytes[i++] & 0x3F;
+      const byte3 = bytes[i++] & 0x3F;
+      const byte4 = bytes[i++] & 0x3F;
+      const codePoint = ((byte1 & 0x07) << 18) | (byte2 << 12) | (byte3 << 6) | byte4;
+      // 서로게이트 페어로 변환
+      const adjusted = codePoint - 0x10000;
+      result += String.fromCharCode(0xD800 + (adjusted >> 10), 0xDC00 + (adjusted & 0x3FF));
+    }
+  }
+  return result;
+}
+
+// Base64 인코딩 - React Native 호환
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 function base64Encode(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) { binary += String.fromCharCode(bytes[i]); }
-  return btoa(binary);
+  let result = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < len ? bytes[i + 1] : 0;
+    const c = i + 2 < len ? bytes[i + 2] : 0;
+
+    result += BASE64_CHARS[a >> 2];
+    result += BASE64_CHARS[((a & 0x03) << 4) | (b >> 4)];
+    result += i + 1 < len ? BASE64_CHARS[((b & 0x0F) << 2) | (c >> 6)] : '=';
+    result += i + 2 < len ? BASE64_CHARS[c & 0x3F] : '=';
+  }
+  return result;
 }
 
 function base64Decode(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
-  return bytes;
+  // 패딩 제거 및 유효성 체크
+  const cleanBase64 = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const len = cleanBase64.length;
+  const outputLen = Math.floor(len * 3 / 4);
+  const bytes = new Uint8Array(outputLen);
+
+  let j = 0;
+  for (let i = 0; i < len; i += 4) {
+    const a = BASE64_CHARS.indexOf(cleanBase64[i]);
+    const b = BASE64_CHARS.indexOf(cleanBase64[i + 1]);
+    const c = i + 2 < len ? BASE64_CHARS.indexOf(cleanBase64[i + 2]) : 0;
+    const d = i + 3 < len ? BASE64_CHARS.indexOf(cleanBase64[i + 3]) : 0;
+
+    if (j < outputLen) bytes[j++] = (a << 2) | (b >> 4);
+    if (j < outputLen && cleanBase64[i + 2] !== '=') bytes[j++] = ((b & 0x0F) << 4) | (c >> 2);
+    if (j < outputLen && cleanBase64[i + 3] !== '=') bytes[j++] = ((c & 0x03) << 6) | d;
+  }
+
+  return bytes.slice(0, j);
 }
 
 export async function sha256(data: string): Promise<string> {
