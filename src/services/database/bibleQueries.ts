@@ -282,13 +282,19 @@ export async function searchVerses(
   }
   const db = databaseService.getBibleDb();
 
-  // BUG-002 수정: 먼저 책 이름으로 검색 시도
+  // 1순위: 구절 참조 검색 시도 (예: "마가복음 1장 1절", "막 1:1")
+  const refResults = await searchByVerseReference(bibleId, query, langId);
+  if (refResults.length > 0) {
+    return refResults;
+  }
+
+  // 2순위: 책 이름으로 검색 시도
   const bookResults = await searchByBookName(bibleId, query, langId, limit);
   if (bookResults.length > 0) {
     return bookResults;
   }
 
-  // FTS5 검색
+  // 3순위: FTS5 전문 검색
   return await db.getAllAsync<SearchResult>(
     `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
             bn.book_name
@@ -315,6 +321,12 @@ export async function searchVersesSimple(
   offset: number = 0
 ): Promise<SearchResult[]> {
   if (isWeb) {
+    // 웹 목업: 구절 참조 검색 시도
+    const refResults = await searchByVerseReference(bibleId, query, langId);
+    if (refResults.length > 0) {
+      return refResults;
+    }
+
     // 웹 목업: 책 이름 검색 시도
     const matchingBook = MOCK_BOOK_NAMES.find(
       b => b.book_name.includes(query) || (b.abbrev && b.abbrev.includes(query))
@@ -336,12 +348,19 @@ export async function searchVersesSimple(
   }
   const db = databaseService.getBibleDb();
 
-  // BUG-002 수정: 먼저 책 이름으로 검색 시도
+  // 1순위: 구절 참조 검색 시도 (예: "마가복음 1장 1절", "막 1:1")
+  const refResults = await searchByVerseReference(bibleId, query, langId);
+  if (refResults.length > 0) {
+    return refResults;
+  }
+
+  // 2순위: 책 이름으로 검색 시도
   const bookResults = await searchByBookName(bibleId, query, langId, limit);
   if (bookResults.length > 0) {
     return bookResults;
   }
 
+  // 3순위: LIKE 텍스트 검색
   return await db.getAllAsync<SearchResult>(
     `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
             bn.book_name
@@ -352,6 +371,151 @@ export async function searchVersesSimple(
      LIMIT ? OFFSET ?`,
     [langId, bibleId, `%${query}%`, limit, offset]
   );
+}
+
+/**
+ * 구절 참조 파싱 결과 타입
+ */
+interface VerseReference {
+  bookName: string;
+  chapter?: number;
+  verseStart?: number;
+  verseEnd?: number;
+}
+
+/**
+ * 구절 참조 문자열 파싱
+ * 지원 형식:
+ * - "마가복음 1장 1절", "마가복음 1:1", "막 1:1"
+ * - "마가복음 1장" (장 전체)
+ * - "마가복음 1장 1-5절", "마가복음 1:1-5" (범위)
+ * - "창 1:1", "창세기 1장 1절"
+ */
+function parseVerseReference(query: string): VerseReference | null {
+  // 공백 정규화
+  const normalized = query.trim().replace(/\s+/g, ' ');
+
+  // 패턴 1: "책이름 장:절" 또는 "책이름 장:절-절"
+  const colonPattern = /^(.+?)\s*(\d+)\s*:\s*(\d+)(?:\s*[-~]\s*(\d+))?$/;
+  const colonMatch = normalized.match(colonPattern);
+  if (colonMatch) {
+    return {
+      bookName: colonMatch[1].trim(),
+      chapter: parseInt(colonMatch[2], 10),
+      verseStart: parseInt(colonMatch[3], 10),
+      verseEnd: colonMatch[4] ? parseInt(colonMatch[4], 10) : parseInt(colonMatch[3], 10),
+    };
+  }
+
+  // 패턴 2: "책이름 장장 절절" (예: "마가복음 1장 1절", "창세기 1장 1-5절")
+  const koreanPattern = /^(.+?)\s*(\d+)\s*장\s*(?:(\d+)(?:\s*[-~]\s*(\d+))?\s*절?)?$/;
+  const koreanMatch = normalized.match(koreanPattern);
+  if (koreanMatch) {
+    return {
+      bookName: koreanMatch[1].trim(),
+      chapter: parseInt(koreanMatch[2], 10),
+      verseStart: koreanMatch[3] ? parseInt(koreanMatch[3], 10) : undefined,
+      verseEnd: koreanMatch[4] ? parseInt(koreanMatch[4], 10) : (koreanMatch[3] ? parseInt(koreanMatch[3], 10) : undefined),
+    };
+  }
+
+  // 패턴 3: "책이름 장" (장 번호만, 예: "마가복음 1", "창 3")
+  const chapterOnlyPattern = /^(.+?)\s+(\d+)$/;
+  const chapterOnlyMatch = normalized.match(chapterOnlyPattern);
+  if (chapterOnlyMatch) {
+    return {
+      bookName: chapterOnlyMatch[1].trim(),
+      chapter: parseInt(chapterOnlyMatch[2], 10),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 구절 참조로 검색
+ * "마가복음 1장 1절", "막 1:1" 등의 형식 지원
+ */
+export async function searchByVerseReference(
+  bibleId: string,
+  query: string,
+  langId: string
+): Promise<SearchResult[]> {
+  const ref = parseVerseReference(query);
+  if (!ref) {
+    return [];
+  }
+
+  if (isWeb) {
+    // 웹 목업
+    const matchingBook = MOCK_BOOK_NAMES.find(
+      b => b.book_name.includes(ref.bookName) || (b.abbrev && b.abbrev.includes(ref.bookName))
+    );
+    if (!matchingBook) return [];
+
+    let verses = MOCK_VERSES.filter(
+      v => v.bible_id === bibleId && v.book_id === matchingBook.book_id
+    );
+
+    if (ref.chapter) {
+      verses = verses.filter(v => v.chapter === ref.chapter);
+    }
+    if (ref.verseStart !== undefined && ref.verseEnd !== undefined) {
+      verses = verses.filter(v => v.verse_num >= ref.verseStart! && v.verse_num <= ref.verseEnd!);
+    }
+
+    return verses.map(v => ({ ...v, book_name: matchingBook.book_name }));
+  }
+
+  const db = databaseService.getBibleDb();
+
+  // 책 이름 또는 약어로 매칭되는 책 찾기
+  const matchingBook = await db.getFirstAsync<{ book_id: number; book_name: string }>(
+    `SELECT book_id, book_name FROM book_names
+     WHERE lang_id = ? AND (book_name LIKE ? OR abbrev LIKE ? OR book_name = ? OR abbrev = ?)
+     ORDER BY
+       CASE
+         WHEN book_name = ? OR abbrev = ? THEN 0
+         WHEN book_name LIKE ? OR abbrev LIKE ? THEN 1
+         ELSE 2
+       END,
+       book_id
+     LIMIT 1`,
+    [langId, `${ref.bookName}%`, `${ref.bookName}%`, ref.bookName, ref.bookName,
+     ref.bookName, ref.bookName, `${ref.bookName}%`, `${ref.bookName}%`]
+  );
+
+  if (!matchingBook) {
+    return [];
+  }
+
+  // 장과 절에 따라 쿼리 구성
+  if (ref.chapter && ref.verseStart !== undefined && ref.verseEnd !== undefined) {
+    // 특정 절 또는 절 범위
+    return await db.getAllAsync<SearchResult>(
+      `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
+              bn.book_name
+       FROM verses v
+       JOIN book_names bn ON v.book_id = bn.book_id AND bn.lang_id = ?
+       WHERE v.bible_id = ? AND v.book_id = ? AND v.chapter = ?
+         AND v.verse_num >= ? AND v.verse_num <= ?
+       ORDER BY v.verse_num`,
+      [langId, bibleId, matchingBook.book_id, ref.chapter, ref.verseStart, ref.verseEnd]
+    );
+  } else if (ref.chapter) {
+    // 장 전체
+    return await db.getAllAsync<SearchResult>(
+      `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
+              bn.book_name
+       FROM verses v
+       JOIN book_names bn ON v.book_id = bn.book_id AND bn.lang_id = ?
+       WHERE v.bible_id = ? AND v.book_id = ? AND v.chapter = ?
+       ORDER BY v.verse_num`,
+      [langId, bibleId, matchingBook.book_id, ref.chapter]
+    );
+  }
+
+  return [];
 }
 
 /**
