@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { MemoStackParamList } from '../../navigation/types';
@@ -34,6 +36,34 @@ export function MemoEditScreen({ route, navigation }: Props) {
   const [verse, setVerse] = useState<Verse | null>(null);
   const [bookName, setBookName] = useState('');
   const [existingMemo, setExistingMemo] = useState<Memo | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const contentInputRef = useRef<TextInput>(null);
+
+  // BUG-003 수정: 키보드 높이 감지
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        // 키보드가 올라오면 스크롤뷰를 아래로 스크롤
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // 데이터 로드
   useEffect(() => {
@@ -159,12 +189,15 @@ export function MemoEditScreen({ route, navigation }: Props) {
       />
       <KeyboardAvoidingView
         style={[styles.container, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={100}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           {/* 구절 정보 */}
@@ -185,6 +218,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
               묵상 내용
             </Text>
             <TextInput
+              ref={contentInputRef}
               style={[
                 styles.contentInput,
                 {
@@ -200,6 +234,12 @@ export function MemoEditScreen({ route, navigation }: Props) {
               multiline
               textAlignVertical="top"
               autoFocus={!memoId}
+              onFocus={() => {
+                // 입력 필드가 포커스되면 약간 위로 스크롤
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 200);
+              }}
             />
           </View>
 
@@ -236,7 +276,8 @@ export function MemoEditScreen({ route, navigation }: Props) {
             </Text>
           </View>
 
-          <View style={styles.bottomSpacing} />
+          {/* BUG-003 수정: 키보드 높이만큼 하단 여백 추가 */}
+          <View style={[styles.bottomSpacing, { height: keyboardHeight > 0 ? keyboardHeight : 40 }]} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeContainer>
@@ -254,6 +295,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
   },
   headerButton: {
     paddingHorizontal: 8,
@@ -315,6 +359,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   bottomSpacing: {
-    height: 40,
+    // 기본 높이는 동적으로 설정됨 (keyboardHeight)
+    minHeight: 40,
   },
 });

@@ -104,45 +104,6 @@
       "verseCount": 31102,
       "isBundled": false,
       "apiEndpoint": "https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles/en-gnv"
-    },
-    {
-      "id": "RV09",
-      "name": "Reina Valera 1909",
-      "nameLocal": "Reina Valera 1909",
-      "language": "es",
-      "languageName": "Español",
-      "copyright": "Public Domain",
-      "description": "Spanish Reina Valera 1909",
-      "size": 4600000,
-      "verseCount": 31102,
-      "isBundled": false,
-      "apiEndpoint": "https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles/es-rv09"
-    },
-    {
-      "id": "LUTH",
-      "name": "Luther Bible 1912",
-      "nameLocal": "Lutherbibel 1912",
-      "language": "de",
-      "languageName": "Deutsch",
-      "copyright": "Public Domain",
-      "description": "German Luther Bible 1912",
-      "size": 4500000,
-      "verseCount": 31102,
-      "isBundled": false,
-      "apiEndpoint": "https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles/de-luther1912"
-    },
-    {
-      "id": "CUV",
-      "name": "Chinese Union Version",
-      "nameLocal": "和合本",
-      "language": "zh",
-      "languageName": "中文",
-      "copyright": "Public Domain",
-      "description": "中文和合本圣经",
-      "size": 3800000,
-      "verseCount": 31102,
-      "isBundled": false,
-      "apiEndpoint": "https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles/cmn-Hans-CN-feb"
     }
   ],
   "languages": [
@@ -155,21 +116,6 @@
       "id": "en",
       "name": "English",
       "nameEnglish": "English"
-    },
-    {
-      "id": "es",
-      "name": "Español",
-      "nameEnglish": "Spanish"
-    },
-    {
-      "id": "de",
-      "name": "Deutsch",
-      "nameEnglish": "German"
-    },
-    {
-      "id": "zh",
-      "name": "中文",
-      "nameEnglish": "Chinese"
     }
   ]
 }

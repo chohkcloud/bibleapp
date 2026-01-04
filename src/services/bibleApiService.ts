@@ -4,9 +4,10 @@
 import { Platform } from 'react-native';
 import type { BibleVersionInfo } from '../types/database';
 import availableVersions from '../data/versions/available.json';
+import { getBookById } from '../data/bibleMetadata';
 
-// API 기본 URL
-const API_BASE_URL = 'https://cdn.jsdelivr.net/gh/wldeh/bible-api/bibles';
+// API 기본 URL (raw.githubusercontent.com 사용 - CDN이 403 반환하는 문제 해결)
+const API_BASE_URL = 'https://raw.githubusercontent.com/wldeh/bible-api/main/bibles';
 
 // 책 ID 매핑 (wldeh/bible-api 형식)
 const BOOK_NAMES: Record<number, string> = {
@@ -27,7 +28,7 @@ const BOOK_NAMES: Record<number, string> = {
   62: '1john', 63: '2john', 64: '3john', 65: 'jude', 66: 'revelation',
 };
 
-// API 버전 ID 매핑
+// API 버전 ID 매핑 (영어 버전만 지원 - 다른 언어는 책 이름 매핑이 달라서 별도 처리 필요)
 const VERSION_API_MAP: Record<string, string> = {
   KJV: 'en-kjv',
   ASV: 'en-asv',
@@ -36,9 +37,10 @@ const VERSION_API_MAP: Record<string, string> = {
   LSV: 'en-lsv',
   DRA: 'en-dra',
   GNV: 'en-gnv',
-  RV09: 'es-rv09',
-  LUTH: 'de-luther1912',
-  CUV: 'cmn-Hans-CN-feb',
+  // 아래 버전들은 책 이름이 해당 언어로 되어 있어서 별도 매핑 필요
+  // RV09: 'es-rv09',    // 스페인어: génesis, éxodo 등
+  // LUTH: 'de-luther1912', // 독일어: 1.chonik 등
+  // CUV: 'cmn-Hans-CN-feb', // 중국어: 以弗所书 등 (신약만 존재)
 };
 
 interface ChapterData {
@@ -124,34 +126,45 @@ class BibleApiService {
   }
 
   /**
-   * 특정 책 다운로드
+   * 특정 책 다운로드 (장별로 다운로드 후 병합)
    */
   async downloadBook(versionId: string, bookId: number): Promise<BookData> {
     const apiVersionId = VERSION_API_MAP[versionId];
     const bookName = BOOK_NAMES[bookId];
+    const bookMeta = getBookById(bookId);
 
     if (!apiVersionId || !bookName) {
       throw new Error(`Invalid version or book: ${versionId}, ${bookId}`);
     }
 
-    const url = `${API_BASE_URL}/${apiVersionId}/books/${bookName}.json`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return this.transformBookData(bookId, bookName, data);
-    } catch (error) {
-      console.error(`Failed to fetch ${url}:`, error);
-      throw error;
+    if (!bookMeta) {
+      throw new Error(`Book metadata not found: ${bookId}`);
     }
+
+    const chapters: ChapterData[] = [];
+    const totalChapters = bookMeta.totalChapters;
+
+    // 각 장을 순차적으로 다운로드
+    for (let chapter = 1; chapter <= totalChapters; chapter++) {
+      try {
+        const chapterData = await this.downloadChapter(versionId, bookId, chapter);
+        chapters.push(chapterData);
+      } catch (error) {
+        console.error(`Failed to download ${bookName} chapter ${chapter}:`, error);
+        throw error;
+      }
+    }
+
+    return {
+      bookId,
+      bookName: bookMeta.englishName,
+      chapters,
+    };
   }
 
   /**
    * 특정 장 다운로드 (온라인 모드용)
+   * URL 형식: /bibles/{version}/books/{book}/chapters/{chapter}.json
    */
   async downloadChapter(
     versionId: string,
@@ -165,12 +178,13 @@ class BibleApiService {
       throw new Error(`Invalid version or book: ${versionId}, ${bookId}`);
     }
 
+    // API URL: https://raw.githubusercontent.com/wldeh/bible-api/main/bibles/en-kjv/books/genesis/chapters/1.json
     const url = `${API_BASE_URL}/${apiVersionId}/books/${bookName}/chapters/${chapter}.json`;
 
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status} for ${url}`);
       }
 
       const data = await response.json();
@@ -258,8 +272,9 @@ class BibleApiService {
    */
   async checkConnection(): Promise<boolean> {
     try {
+      // raw.githubusercontent.com은 HEAD 요청을 지원하지 않으므로 GET 사용
       const response = await fetch(`${API_BASE_URL}/en-kjv/books/genesis/chapters/1.json`, {
-        method: 'HEAD',
+        method: 'GET',
       });
       return response.ok;
     } catch {

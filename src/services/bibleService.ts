@@ -192,29 +192,31 @@ class BibleService {
   }
 
   /**
-   * 성경 검색 (전문검색)
+   * 성경 검색 (전문검색) - 책 이름 검색 지원
    * @param bibleId - 성경 버전 ID
    * @param query - 검색어
    * @param langId - 책 이름 표시 언어
-   * @param limit - 결과 개수 제한 (기본 100)
+   * @param limit - 결과 개수 제한 (기본 500, BUG-001 수정)
+   * @param offset - 페이지네이션 오프셋 (기본 0)
    */
   async search(
     bibleId: string,
     query: string,
     langId: string,
-    limit: number = 100
+    limit: number = 500,
+    offset: number = 0
   ): Promise<SearchResult[]> {
     try {
       if (!query || query.trim().length === 0) {
         return [];
       }
 
-      // FTS5 검색 시도
+      // FTS5 검색 시도 (책 이름 검색 포함)
       try {
-        return await searchVerses(bibleId, query.trim(), langId, limit);
+        return await searchVerses(bibleId, query.trim(), langId, limit, offset);
       } catch {
         // FTS5 실패 시 단순 LIKE 검색 시도
-        return await searchVersesSimple(bibleId, query.trim(), langId, limit);
+        return await searchVersesSimple(bibleId, query.trim(), langId, limit, offset);
       }
     } catch (error) {
       throw new AppError(
@@ -226,19 +228,22 @@ class BibleService {
   }
 
   /**
-   * 단순 검색 (LIKE)
+   * 단순 검색 (LIKE) - 책 이름 검색 지원
+   * @param limit - 기본 500 (BUG-001 수정)
+   * @param offset - 페이지네이션 오프셋
    */
   async searchSimple(
     bibleId: string,
     query: string,
     langId: string,
-    limit: number = 100
+    limit: number = 500,
+    offset: number = 0
   ): Promise<SearchResult[]> {
     try {
       if (!query || query.trim().length === 0) {
         return [];
       }
-      return await searchVersesSimple(bibleId, query.trim(), langId, limit);
+      return await searchVersesSimple(bibleId, query.trim(), langId, limit, offset);
     } catch (error) {
       throw new AppError(
         ErrorCode.BIBLE_SEARCH_FAILED,

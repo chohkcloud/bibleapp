@@ -266,18 +266,27 @@ export async function getVerseById(verseId: number): Promise<Verse | null> {
 }
 
 /**
- * 성경 전문 검색 (FTS5)
+ * 성경 전문 검색 (FTS5) - 책 이름 검색 지원
+ * @param limit - 기본 500건 (BUG-001 수정)
+ * @param offset - 페이지네이션용 오프셋
  */
 export async function searchVerses(
   bibleId: string,
   query: string,
   langId: string,
-  limit: number = 100
+  limit: number = 500,
+  offset: number = 0
 ): Promise<SearchResult[]> {
   if (isWeb) {
-    return searchVersesSimple(bibleId, query, langId, limit);
+    return searchVersesSimple(bibleId, query, langId, limit, offset);
   }
   const db = databaseService.getBibleDb();
+
+  // BUG-002 수정: 먼저 책 이름으로 검색 시도
+  const bookResults = await searchByBookName(bibleId, query, langId, limit);
+  if (bookResults.length > 0) {
+    return bookResults;
+  }
 
   // FTS5 검색
   return await db.getAllAsync<SearchResult>(
@@ -288,30 +297,50 @@ export async function searchVerses(
      JOIN book_names bn ON v.book_id = bn.book_id AND bn.lang_id = ?
      WHERE v.bible_id = ? AND verses_fts MATCH ?
      ORDER BY rank
-     LIMIT ?`,
-    [langId, bibleId, query, limit]
+     LIMIT ? OFFSET ?`,
+    [langId, bibleId, query, limit, offset]
   );
 }
 
 /**
- * 단순 텍스트 검색 (LIKE)
+ * 단순 텍스트 검색 (LIKE) - 책 이름 검색 지원
+ * @param limit - 기본 500건 (BUG-001 수정)
+ * @param offset - 페이지네이션용 오프셋
  */
 export async function searchVersesSimple(
   bibleId: string,
   query: string,
   langId: string,
-  limit: number = 100
+  limit: number = 500,
+  offset: number = 0
 ): Promise<SearchResult[]> {
   if (isWeb) {
+    // 웹 목업: 책 이름 검색 시도
+    const matchingBook = MOCK_BOOK_NAMES.find(
+      b => b.book_name.includes(query) || (b.abbrev && b.abbrev.includes(query))
+    );
+    if (matchingBook) {
+      const bookVerses = MOCK_VERSES
+        .filter(v => v.bible_id === bibleId && v.book_id === matchingBook.book_id)
+        .slice(offset, offset + limit);
+      return bookVerses.map(v => ({ ...v, book_name: matchingBook.book_name }));
+    }
+
     const results = MOCK_VERSES
       .filter(v => v.bible_id === bibleId && v.text.includes(query))
-      .slice(0, limit);
+      .slice(offset, offset + limit);
     return results.map(v => {
       const bookName = MOCK_BOOK_NAMES.find(b => b.book_id === v.book_id)?.book_name ?? '';
       return { ...v, book_name: bookName };
     });
   }
   const db = databaseService.getBibleDb();
+
+  // BUG-002 수정: 먼저 책 이름으로 검색 시도
+  const bookResults = await searchByBookName(bibleId, query, langId, limit);
+  if (bookResults.length > 0) {
+    return bookResults;
+  }
 
   return await db.getAllAsync<SearchResult>(
     `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
@@ -320,8 +349,57 @@ export async function searchVersesSimple(
      JOIN book_names bn ON v.book_id = bn.book_id AND bn.lang_id = ?
      WHERE v.bible_id = ? AND v.text LIKE ?
      ORDER BY v.book_id, v.chapter, v.verse_num
+     LIMIT ? OFFSET ?`,
+    [langId, bibleId, `%${query}%`, limit, offset]
+  );
+}
+
+/**
+ * BUG-002 수정: 책 이름으로 검색
+ * 검색어가 책 이름과 매칭되면 해당 책의 첫 장 구절들 반환
+ */
+export async function searchByBookName(
+  bibleId: string,
+  query: string,
+  langId: string,
+  limit: number = 500
+): Promise<SearchResult[]> {
+  if (isWeb) {
+    const matchingBook = MOCK_BOOK_NAMES.find(
+      b => b.book_name.includes(query) || (b.abbrev && b.abbrev.includes(query))
+    );
+    if (!matchingBook) return [];
+    const bookVerses = MOCK_VERSES
+      .filter(v => v.bible_id === bibleId && v.book_id === matchingBook.book_id)
+      .slice(0, limit);
+    return bookVerses.map(v => ({ ...v, book_name: matchingBook.book_name }));
+  }
+
+  const db = databaseService.getBibleDb();
+
+  // 책 이름 또는 약어로 매칭되는 책 찾기
+  const matchingBook = await db.getFirstAsync<{ book_id: number; book_name: string }>(
+    `SELECT book_id, book_name FROM book_names
+     WHERE lang_id = ? AND (book_name LIKE ? OR abbrev LIKE ?)
+     ORDER BY book_id
+     LIMIT 1`,
+    [langId, `%${query}%`, `%${query}%`]
+  );
+
+  if (!matchingBook) {
+    return [];
+  }
+
+  // 해당 책의 구절들 반환 (1장부터)
+  return await db.getAllAsync<SearchResult>(
+    `SELECT v.verse_id, v.bible_id, v.book_id, v.chapter, v.verse_num, v.text,
+            bn.book_name
+     FROM verses v
+     JOIN book_names bn ON v.book_id = bn.book_id AND bn.lang_id = ?
+     WHERE v.bible_id = ? AND v.book_id = ?
+     ORDER BY v.chapter, v.verse_num
      LIMIT ?`,
-    [langId, bibleId, `%${query}%`, limit]
+    [langId, bibleId, matchingBook.book_id, limit]
   );
 }
 
