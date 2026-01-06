@@ -314,51 +314,57 @@ export function ReadingScreen({ route, navigation }: Props) {
           </Text>
         </View>
 
-          {/* 구절 목록 */}
+          {/* 구절 목록 - 여러 구절 선택 가능하도록 하나의 Text로 통합 */}
           <View style={styles.content}>
-            {verses.map((verse) => (
-              <View key={verse.verse_id}>
-                <TouchableOpacity
-                  style={[
-                    styles.verseContainer,
-                    verse.isHighlighted && {
-                      backgroundColor: verse.highlightColor + '40',
-                      borderRadius: 4,
-                      marginHorizontal: -4,
-                      paddingHorizontal: 4,
-                    },
-                  ]}
-                  onPress={() => handleVersePress(verse)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.verseNumberContainer}>
-                    <Text style={[styles.verseNumber, { color: colors.primary }]}>
-                      {verse.verse_num}
-                    </Text>
-                    {verse.isBookmarked && (
-                      <Text style={styles.bookmarkIcon}>🔖</Text>
-                    )}
-                    {verse.hasMemo && (
-                      <Text style={styles.memoIcon}>📝</Text>
-                    )}
-                  </View>
-                  <Text style={[styles.verseText, { color: colors.text, fontSize }]}>
+            <Text selectable={true} style={[styles.versesContainer, { color: colors.text, fontSize, lineHeight: fontSize * 1.8 }]}>
+              {verses.map((verse, index) => (
+                <Text key={verse.verse_id}>
+                  {/* 구절 번호 - 터치 시 액션 모달 */}
+                  <Text
+                    style={[styles.verseNumberInline, { color: colors.primary }]}
+                    onPress={() => handleVersePress(verse)}
+                  >
+                    {verse.verse_num}
+                    {verse.isBookmarked && '🔖'}
+                    {verse.hasMemo && '📝'}
+                    {'  '}
+                  </Text>
+                  {/* 구절 텍스트 - 하이라이트 적용 */}
+                  <Text
+                    style={[
+                      verse.isHighlighted && { backgroundColor: verse.highlightColor + '50', borderRadius: 2 }
+                    ]}
+                    onLongPress={() => handleVersePress(verse)}
+                  >
                     {verse.text}
                   </Text>
-                </TouchableOpacity>
-                {/* 인라인 주석 표시 */}
-                {showNotes && verse.hasMemo && verse.memoContent && (
+                  {index < verses.length - 1 && '\n'}
+                </Text>
+              ))}
+            </Text>
+
+            {/* 인라인 주석 목록 (주석이 있는 구절만) */}
+            {showNotes && verses.filter(v => v.hasMemo && v.memoContent).length > 0 && (
+              <View style={[styles.notesSection, { borderTopColor: colors.border }]}>
+                <Text style={[styles.notesSectionTitle, { color: colors.textSecondary }]}>
+                  💬 주석
+                </Text>
+                {verses.filter(v => v.hasMemo && v.memoContent).map((verse) => (
                   <TouchableOpacity
+                    key={`note-${verse.verse_id}`}
                     style={[styles.inlineNote, { backgroundColor: colors.primary + '10', borderLeftColor: colors.primary }]}
                     onPress={() => handleVersePress(verse)}
                   >
+                    <Text style={[styles.noteVerseRef, { color: colors.primary }]}>
+                      {verse.verse_num}절
+                    </Text>
                     <Text style={[styles.inlineNoteText, { color: colors.textSecondary }]} numberOfLines={2}>
-                      💬 {verse.memoContent}
+                      {verse.memoContent}
                     </Text>
                   </TouchableOpacity>
-                )}
+                ))}
               </View>
-            ))}
+            )}
           </View>
 
           {/* 장 네비게이션 */}
@@ -578,6 +584,28 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
   },
+  versesContainer: {
+    // 전체 구절을 감싸는 Text 스타일
+  },
+  verseNumberInline: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  notesSection: {
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+  },
+  notesSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  noteVerseRef: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
   verseContainer: {
     flexDirection: 'row',
     marginBottom: 16,
@@ -607,8 +635,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   inlineNote: {
-    marginLeft: 32,
-    marginRight: 8,
     marginBottom: 12,
     padding: 10,
     borderLeftWidth: 3,
