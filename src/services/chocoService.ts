@@ -45,7 +45,7 @@ export interface SentimentResult {
 /** API 헬스 체크 응답 */
 export interface HealthCheckResult {
   status: string;
-  ollama_connected: boolean;
+  ollama_status: string;  // "connected" | "disconnected"
   model: string;
 }
 
@@ -134,7 +134,7 @@ class ChocoService {
       }
 
       const result: HealthCheckResult = await response.json();
-      this.isAvailable = result.status === 'healthy' && result.ollama_connected;
+      this.isAvailable = result.status === 'healthy' && result.ollama_status === 'connected';
       this.lastHealthCheck = Date.now();
 
       if (!this.isAvailable) {
