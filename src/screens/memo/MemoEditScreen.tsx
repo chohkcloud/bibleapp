@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,8 @@ import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
-import { memoService, bibleService } from '../../services';
+import { memoService, bibleService, chocoService } from '../../services';
+import type { HybridEmotionResult } from '../../services/chocoService';
 import type { Verse, Memo } from '../../types/database';
 
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoEdit'>;
@@ -37,8 +38,11 @@ export function MemoEditScreen({ route, navigation }: Props) {
   const [bookName, setBookName] = useState('');
   const [existingMemo, setExistingMemo] = useState<Memo | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const contentInputRef = useRef<TextInput>(null);
+  const analyzeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // BUG-003 수정: 키보드 높이 감지
   useEffect(() => {
@@ -64,6 +68,43 @@ export function MemoEditScreen({ route, navigation }: Props) {
       keyboardDidHideListener.remove();
     };
   }, []);
+
+  // 감정분석 함수 (디바운스 처리)
+  const analyzeEmotion = useCallback(async (text: string) => {
+    if (!text || text.trim().length < 20) {
+      setEmotionResult(null);
+      return;
+    }
+
+    try {
+      setIsAnalyzing(true);
+      const result = await chocoService.analyzeHybridEmotion(text);
+      setEmotionResult(result);
+    } catch (error) {
+      console.log('[MemoEdit] 감정분석 실패:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, []);
+
+  // 내용 변경 시 디바운스된 감정분석 실행
+  useEffect(() => {
+    // 이전 타이머 취소
+    if (analyzeTimeoutRef.current) {
+      clearTimeout(analyzeTimeoutRef.current);
+    }
+
+    // 2초 후 분석 실행 (타이핑 중에는 분석하지 않음)
+    analyzeTimeoutRef.current = setTimeout(() => {
+      analyzeEmotion(content);
+    }, 2000);
+
+    return () => {
+      if (analyzeTimeoutRef.current) {
+        clearTimeout(analyzeTimeoutRef.current);
+      }
+    };
+  }, [content, analyzeEmotion]);
 
   // 데이터 로드
   useEffect(() => {
@@ -264,6 +305,77 @@ export function MemoEditScreen({ route, navigation }: Props) {
             />
           </View>
 
+          {/* 감정분석 미리보기 */}
+          {(emotionResult || isAnalyzing || content.trim().length >= 20) && (
+            <View style={[styles.emotionPreviewCard, { backgroundColor: colors.surface }]}>
+              <View style={styles.emotionPreviewHeader}>
+                <Text style={styles.emotionPreviewIcon}>🤖</Text>
+                <Text style={[styles.emotionPreviewLabel, { color: colors.text }]}>
+                  AI 감정분석
+                </Text>
+                {isAnalyzing && (
+                  <ActivityIndicator size="small" color={colors.primary} style={styles.emotionPreviewLoader} />
+                )}
+              </View>
+
+              {isAnalyzing ? (
+                <Text style={[styles.emotionPreviewAnalyzing, { color: colors.textSecondary }]}>
+                  분석 중...
+                </Text>
+              ) : emotionResult ? (
+                <View style={styles.emotionPreviewContent}>
+                  {/* 주요 감정 */}
+                  <View style={styles.emotionPreviewMainRow}>
+                    <Text style={styles.emotionPreviewMainIcon}>
+                      {chocoService.getEmotionIcon(emotionResult.main_emotion)}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.emotionPreviewMainText,
+                        { color: chocoService.getEmotionColor(emotionResult.main_emotion) },
+                      ]}
+                    >
+                      {emotionResult.main_emotion}
+                    </Text>
+                    <View style={[styles.emotionPreviewBadge, { backgroundColor: colors.primary + '15' }]}>
+                      <Text style={[styles.emotionPreviewBadgeText, { color: colors.primary }]}>
+                        {Math.round(emotionResult.confidence * 100)}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* 감정 태그들 */}
+                  {emotionResult.emotions.length > 0 && (
+                    <View style={styles.emotionPreviewTags}>
+                      {emotionResult.emotions.slice(0, 4).map((emotion, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.emotionPreviewTag,
+                            { backgroundColor: chocoService.getEmotionColor(emotion) + '20' },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.emotionPreviewTagText,
+                              { color: chocoService.getEmotionColor(emotion) },
+                            ]}
+                          >
+                            {emotion}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ) : content.trim().length >= 20 ? (
+                <Text style={[styles.emotionPreviewWaiting, { color: colors.textSecondary }]}>
+                  입력을 멈추면 자동으로 분석됩니다
+                </Text>
+              ) : null}
+            </View>
+          )}
+
           {/* 작성 팁 */}
           <View style={[styles.tipCard, { backgroundColor: colors.primary + '10' }]}>
             <Text style={[styles.tipTitle, { color: colors.primary }]}>
@@ -361,5 +473,76 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     // 기본 높이는 동적으로 설정됨 (keyboardHeight)
     minHeight: 40,
+  },
+  // 감정분석 미리보기 스타일
+  emotionPreviewCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 12,
+  },
+  emotionPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  emotionPreviewIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  emotionPreviewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  emotionPreviewLoader: {
+    marginLeft: 8,
+  },
+  emotionPreviewAnalyzing: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  emotionPreviewWaiting: {
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  emotionPreviewContent: {},
+  emotionPreviewMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  emotionPreviewMainIcon: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  emotionPreviewMainText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  emotionPreviewBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  emotionPreviewBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  emotionPreviewTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  emotionPreviewTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  emotionPreviewTagText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

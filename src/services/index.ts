@@ -22,3 +22,7 @@ export { bibleVersionService } from './bibleVersionService';
 
 // Backup Service
 export { backupService } from './backupService';
+
+// Choco AI Service (감정분석)
+export { chocoService } from './chocoService';
+export type { HybridEmotionResult, SentimentResult, HealthCheckResult } from './chocoService';

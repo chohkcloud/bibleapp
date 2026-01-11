@@ -16,7 +16,8 @@ import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
-import { memoService, bibleService } from '../../services';
+import { memoService, bibleService, chocoService } from '../../services';
+import type { HybridEmotionResult } from '../../services/chocoService';
 import type { Memo, Verse } from '../../types/database';
 
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoDetail'>;
@@ -30,6 +31,8 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   const [memo, setMemo] = useState<Memo | null>(null);
   const [verse, setVerse] = useState<Verse | null>(null);
   const [bookName, setBookName] = useState('');
+  const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // 데이터 로드
   const loadData = useCallback(async () => {
@@ -59,6 +62,9 @@ export function MemoDetailScreen({ route, navigation }: Props) {
         memoData.verse_num
       );
       setVerse(verseData);
+
+      // 감정분석 실행 (비동기)
+      analyzeEmotion(memoData.content);
     } catch (error) {
       console.error('Error loading memo:', error);
       Alert.alert('오류', '데이터를 불러오는데 실패했습니다.');
@@ -66,6 +72,23 @@ export function MemoDetailScreen({ route, navigation }: Props) {
       setIsLoading(false);
     }
   }, [memoId, bibleVersion, language, navigation]);
+
+  // 감정분석 실행
+  const analyzeEmotion = useCallback(async (content: string) => {
+    if (!content || content.trim().length < 10) {
+      return; // 내용이 너무 짧으면 분석하지 않음
+    }
+
+    try {
+      setIsAnalyzing(true);
+      const result = await chocoService.analyzeHybridEmotion(content);
+      setEmotionResult(result);
+    } catch (error) {
+      console.log('[MemoDetail] 감정분석 실패:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, []);
 
   // 화면 포커스될 때마다 새로고침
   useFocusEffect(
@@ -225,6 +248,186 @@ export function MemoDetailScreen({ route, navigation }: Props) {
           <Text style={[styles.contentText, { color: colors.text }]}>
             {memo.content}
           </Text>
+        </View>
+
+        {/* 감정분석 결과 */}
+        <View style={[styles.emotionCard, { backgroundColor: colors.surface }]}>
+          {/* 헤더 */}
+          <View style={styles.emotionHeader}>
+            <View style={styles.emotionHeaderLeft}>
+              <Text style={styles.emotionHeaderIcon}>🤖</Text>
+              <Text style={[styles.emotionLabel, { color: colors.text }]}>
+                AI 감정분석
+              </Text>
+            </View>
+            {emotionResult && (
+              <View
+                style={[
+                  styles.confidenceBadge,
+                  { backgroundColor: colors.primary + '15' },
+                ]}
+              >
+                <Text style={[styles.confidenceText, { color: colors.primary }]}>
+                  신뢰도 {Math.round(emotionResult.confidence * 100)}%
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {isAnalyzing ? (
+            /* 분석 중 상태 */
+            <View style={styles.analyzingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.analyzingText, { color: colors.textSecondary }]}>
+                묵상 내용을 분석하고 있습니다...
+              </Text>
+              <Text style={[styles.analyzingSubText, { color: colors.textSecondary }]}>
+                한국어 감정 데이터베이스를 참조 중
+              </Text>
+            </View>
+          ) : emotionResult ? (
+            <>
+              {/* 주요 감정 - 큰 디스플레이 */}
+              <View
+                style={[
+                  styles.mainEmotionContainer,
+                  { backgroundColor: chocoService.getEmotionColor(emotionResult.main_emotion) + '15' },
+                ]}
+              >
+                <Text style={styles.mainEmotionIcon}>
+                  {chocoService.getEmotionIcon(emotionResult.main_emotion)}
+                </Text>
+                <Text
+                  style={[
+                    styles.mainEmotionText,
+                    { color: chocoService.getEmotionColor(emotionResult.main_emotion) },
+                  ]}
+                >
+                  {emotionResult.main_emotion}
+                </Text>
+              </View>
+
+              {/* 분위기 설명 */}
+              {emotionResult.tone && (
+                <View style={[styles.toneContainer, { borderColor: colors.border }]}>
+                  <Text style={styles.toneIcon}>💭</Text>
+                  <Text style={[styles.toneText, { color: colors.text }]}>
+                    "{emotionResult.tone}"
+                  </Text>
+                </View>
+              )}
+
+              {/* 감정 태그들 */}
+              {emotionResult.emotions.length > 0 && (
+                <View style={styles.emotionTagsSection}>
+                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                    감지된 감정
+                  </Text>
+                  <View style={styles.emotionTagsRow}>
+                    {emotionResult.emotions.slice(0, 5).map((emotion, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.emotionTag,
+                          {
+                            backgroundColor: chocoService.getEmotionColor(emotion) + '20',
+                            borderColor: chocoService.getEmotionColor(emotion) + '40',
+                          },
+                        ]}
+                      >
+                        <Text style={styles.emotionTagIcon}>
+                          {chocoService.getEmotionIcon(emotion)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.emotionTagText,
+                            { color: chocoService.getEmotionColor(emotion) },
+                          ]}
+                        >
+                          {emotion}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* 핵심 표현 */}
+              {emotionResult.key_phrases && emotionResult.key_phrases.length > 0 && (
+                <View style={styles.keyPhrasesSection}>
+                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                    핵심 표현
+                  </Text>
+                  <View style={styles.keyPhrasesRow}>
+                    {emotionResult.key_phrases.slice(0, 4).map((phrase, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.keyPhraseChip,
+                          { backgroundColor: colors.background, borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.keyPhraseText, { color: colors.text }]}>
+                          "{phrase}"
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* RAG 컨텍스트 정보 */}
+              <View style={[styles.ragInfoContainer, { backgroundColor: colors.background }]}>
+                <Text style={[styles.ragInfoLabel, { color: colors.textSecondary }]}>
+                  분석에 사용된 한국어 감정 데이터
+                </Text>
+                <View style={styles.ragInfoRow}>
+                  <View style={styles.ragInfoItem}>
+                    <Text style={[styles.ragInfoCount, { color: colors.primary }]}>
+                      {emotionResult.context.kpoem}
+                    </Text>
+                    <Text style={[styles.ragInfoName, { color: colors.textSecondary }]}>
+                      KPoEM
+                    </Text>
+                  </View>
+                  <View style={[styles.ragInfoDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.ragInfoItem}>
+                    <Text style={[styles.ragInfoCount, { color: colors.primary }]}>
+                      {emotionResult.context.kote}
+                    </Text>
+                    <Text style={[styles.ragInfoName, { color: colors.textSecondary }]}>
+                      KOTE
+                    </Text>
+                  </View>
+                  <View style={[styles.ragInfoDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.ragInfoItem}>
+                    <Text style={[styles.ragInfoCount, { color: colors.primary }]}>
+                      {emotionResult.context.kosac}
+                    </Text>
+                    <Text style={[styles.ragInfoName, { color: colors.textSecondary }]}>
+                      KOSAC
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </>
+          ) : (
+            /* 분석 전 상태 */
+            <View style={styles.beforeAnalyzeContainer}>
+              <Text style={styles.beforeAnalyzeIcon}>🔍</Text>
+              <Text style={[styles.beforeAnalyzeText, { color: colors.textSecondary }]}>
+                묵상 내용의 감정을 AI가 분석해 드립니다
+              </Text>
+              <TouchableOpacity
+                style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
+                onPress={() => analyzeEmotion(memo.content)}
+              >
+                <Text style={styles.analyzeButtonText}>
+                  감정분석 시작하기
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* 태그 */}
@@ -407,5 +610,204 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 40,
+  },
+  // 감정분석 스타일
+  emotionCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  emotionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  emotionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emotionHeaderIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  emotionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confidenceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  confidenceText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // 분석 중 상태
+  analyzingContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  analyzingText: {
+    fontSize: 15,
+    marginTop: 16,
+    fontWeight: '500',
+  },
+  analyzingSubText: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  // 주요 감정
+  mainEmotionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  mainEmotionIcon: {
+    fontSize: 48,
+    marginRight: 12,
+  },
+  mainEmotionText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  // 분위기
+  toneContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  toneIcon: {
+    fontSize: 16,
+    marginRight: 8,
+    marginTop: 2,
+  },
+  toneText: {
+    fontSize: 14,
+    lineHeight: 20,
+    flex: 1,
+    fontStyle: 'italic',
+  },
+  // 섹션
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // 감정 태그
+  emotionTagsSection: {
+    marginBottom: 16,
+  },
+  emotionTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  emotionTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  emotionTagIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  emotionTagText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // 핵심 표현
+  keyPhrasesSection: {
+    marginBottom: 16,
+  },
+  keyPhrasesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  keyPhraseChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  keyPhraseText: {
+    fontSize: 13,
+  },
+  // RAG 정보
+  ragInfoContainer: {
+    padding: 12,
+    borderRadius: 12,
+  },
+  ragInfoLabel: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  ragInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ragInfoItem: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  ragInfoCount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  ragInfoName: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  ragInfoDivider: {
+    width: 1,
+    height: 30,
+  },
+  // 분석 전 상태
+  beforeAnalyzeContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  beforeAnalyzeIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  beforeAnalyzeText: {
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  analyzeButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 25,
+    alignItems: 'center',
+  },
+  analyzeButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
