@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { databaseService } from './database';
 import { authService } from './authService';
 import { encrypt, decrypt } from '../utils/crypto';
+import { chocoService } from './chocoService';
 
 const isWeb = Platform.OS === 'web';
 import {
@@ -100,7 +101,12 @@ class MemoService {
         tags: input.tagIds,
       };
 
-      return await createMemo(dto);
+      const memoId = await createMemo(dto);
+
+      // 감정분석 실행 (백그라운드, 비동기)
+      this.triggerEmotionAnalysis(input.content);
+
+      return memoId;
     } catch (error) {
       if (error instanceof AppError) {
         throw error;
@@ -243,6 +249,9 @@ class MemoService {
         // 암호화 키 조회
         const encryptionKey = await authService.getEncryptionKey();
         dto.content = await encrypt(input.content, encryptionKey);
+
+        // 감정분석 실행 (백그라운드, 비동기)
+        this.triggerEmotionAnalysis(input.content);
       }
 
       if (input.tagIds !== undefined) {
@@ -260,6 +269,22 @@ class MemoService {
         error as Error
       );
     }
+  }
+
+  /**
+   * 감정분석 트리거 (백그라운드 실행)
+   * API 활성화 체크 후 분석 실행
+   * 비활성화 시 3시간 후 재시도
+   */
+  private triggerEmotionAnalysis(content: string): void {
+    // 비동기로 실행 (저장 흐름을 블로킹하지 않음)
+    chocoService.analyzeOnSave(content).then(result => {
+      if (result) {
+        console.log(`[MemoService] 감정분석 완료: ${result.main_emotion}`);
+      }
+    }).catch(error => {
+      console.log('[MemoService] 감정분석 에러:', error);
+    });
   }
 
   /**

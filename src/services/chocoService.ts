@@ -107,7 +107,9 @@ class ChocoService {
   private baseUrl: string;
   private isAvailable: boolean = false;
   private lastHealthCheck: number = 0;
-  private healthCheckInterval: number = 60000; // 1분
+  private lastFailedCheck: number = 0;
+  private healthCheckInterval: number = 60000; // 1분 (정상 시)
+  private failedCooldownInterval: number = 3 * 60 * 60 * 1000; // 3시간 (실패 시)
 
   constructor() {
     this.baseUrl = getBaseUrl();
@@ -126,31 +128,75 @@ class ChocoService {
 
       if (!response.ok) {
         this.isAvailable = false;
+        this.lastFailedCheck = Date.now();
+        console.log('[ChocoService] API 서버 응답 실패 - 3시간 후 재시도');
         return null;
       }
 
       const result: HealthCheckResult = await response.json();
       this.isAvailable = result.status === 'healthy' && result.ollama_connected;
       this.lastHealthCheck = Date.now();
+
+      if (!this.isAvailable) {
+        this.lastFailedCheck = Date.now();
+        console.log('[ChocoService] Ollama 연결 실패 - 3시간 후 재시도');
+      } else {
+        this.lastFailedCheck = 0; // 성공 시 실패 기록 초기화
+        console.log('[ChocoService] API 서버 연결 성공');
+      }
+
       return result;
     } catch (error) {
-      console.log('[ChocoService] API 서버 연결 실패:', error);
+      console.log('[ChocoService] API 서버 연결 실패 - 3시간 후 재시도:', error);
       this.isAvailable = false;
+      this.lastFailedCheck = Date.now();
       return null;
     }
   }
 
   /**
    * API 사용 가능 여부 확인
+   * - 정상: 1분마다 체크
+   * - 실패: 3시간 쿨다운 후 재체크
    */
   async isApiAvailable(): Promise<boolean> {
-    // 캐시된 상태 사용 (1분 이내)
-    if (Date.now() - this.lastHealthCheck < this.healthCheckInterval) {
-      return this.isAvailable;
+    const now = Date.now();
+
+    // 실패 쿨다운 중이면 바로 false 반환
+    if (this.lastFailedCheck > 0) {
+      const timeSinceFailure = now - this.lastFailedCheck;
+      if (timeSinceFailure < this.failedCooldownInterval) {
+        const remainingHours = Math.ceil((this.failedCooldownInterval - timeSinceFailure) / (60 * 60 * 1000));
+        console.log(`[ChocoService] 쿨다운 중 - ${remainingHours}시간 후 재시도`);
+        return false;
+      }
+      // 쿨다운 완료 - 재시도
+      console.log('[ChocoService] 쿨다운 완료 - 재연결 시도');
+    }
+
+    // 캐시된 상태 사용 (1분 이내, 정상 상태일 때)
+    if (this.isAvailable && now - this.lastHealthCheck < this.healthCheckInterval) {
+      return true;
     }
 
     await this.checkHealth();
     return this.isAvailable;
+  }
+
+  /**
+   * 현재 API 활성화 상태 (캐시된 값, 체크 없이)
+   */
+  isCurrentlyAvailable(): boolean {
+    return this.isAvailable;
+  }
+
+  /**
+   * 다음 재시도까지 남은 시간 (밀리초)
+   */
+  getNextRetryTime(): number {
+    if (this.lastFailedCheck === 0) return 0;
+    const elapsed = Date.now() - this.lastFailedCheck;
+    return Math.max(0, this.failedCooldownInterval - elapsed);
   }
 
   /**
@@ -351,12 +397,74 @@ class ChocoService {
   }
 
   /**
+   * 메모 저장 시 감정분석 (비동기 백그라운드)
+   * API 활성화 상태 체크 후 분석 실행
+   * @param text - 분석할 텍스트
+   * @param callback - 결과 콜백 (선택)
+   */
+  async analyzeOnSave(
+    text: string,
+    callback?: (result: HybridEmotionResult | null) => void
+  ): Promise<HybridEmotionResult | null> {
+    // 텍스트가 너무 짧으면 분석하지 않음
+    if (!text || text.trim().length < 20) {
+      console.log('[ChocoService] 텍스트가 너무 짧아 분석 생략');
+      callback?.(null);
+      return null;
+    }
+
+    // API 사용 가능 여부 확인 (3시간 쿨다운 적용)
+    const available = await this.isApiAvailable();
+    if (!available) {
+      const nextRetry = this.getNextRetryTime();
+      if (nextRetry > 0) {
+        const hours = Math.ceil(nextRetry / (60 * 60 * 1000));
+        console.log(`[ChocoService] API 비활성화 - ${hours}시간 후 재시도`);
+      }
+      callback?.(null);
+      return null;
+    }
+
+    // 감정분석 실행
+    console.log('[ChocoService] 메모 저장 시 감정분석 시작');
+    const result = await this.analyzeHybridEmotion(text);
+
+    if (result) {
+      console.log(`[ChocoService] 감정분석 완료: ${result.main_emotion}`);
+    } else {
+      console.log('[ChocoService] 감정분석 실패');
+    }
+
+    callback?.(result);
+    return result;
+  }
+
+  /**
+   * 감정분석 결과를 JSON 문자열로 변환 (DB 저장용)
+   */
+  serializeEmotionResult(result: HybridEmotionResult): string {
+    return JSON.stringify(result);
+  }
+
+  /**
+   * JSON 문자열을 감정분석 결과로 파싱 (DB 로드용)
+   */
+  parseEmotionResult(json: string): HybridEmotionResult | null {
+    try {
+      return JSON.parse(json) as HybridEmotionResult;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * API 기본 URL 변경 (설정용)
    */
   setBaseUrl(url: string): void {
     this.baseUrl = url;
     this.isAvailable = false;
     this.lastHealthCheck = 0;
+    this.lastFailedCheck = 0;
   }
 
   /**
@@ -364,6 +472,14 @@ class ChocoService {
    */
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  /**
+   * 쿨다운 초기화 (수동 재시도용)
+   */
+  resetCooldown(): void {
+    this.lastFailedCheck = 0;
+    console.log('[ChocoService] 쿨다운 초기화됨 - 즉시 재시도 가능');
   }
 }
 
