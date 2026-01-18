@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BibleStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
@@ -42,6 +43,11 @@ export function ChapterSelectScreen({ route, navigation }: Props) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 책 선택 화면으로 이동
+  const handleBookChange = () => {
+    navigation.navigate('Bible');
   };
 
   // 장 선택
@@ -93,15 +99,29 @@ export function ChapterSelectScreen({ route, navigation }: Props) {
     <SafeContainer edges={['bottom']}>
       <CustomHeader title={bookName} />
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* 책 정보 */}
-        <View style={[styles.infoHeader, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.bookNameText, { color: colors.text }]}>
-            {bookName}
-          </Text>
-          <Text style={[styles.chapterCount, { color: colors.textSecondary }]}>
-            총 {totalChapters}장
-          </Text>
-        </View>
+        {/* 책 정보 - 터치하면 책 선택 화면으로 이동 */}
+        <TouchableOpacity
+          style={[styles.infoHeader, { borderBottomColor: colors.border }]}
+          onPress={handleBookChange}
+          activeOpacity={0.7}
+        >
+          <View style={styles.bookInfoRow}>
+            <View>
+              <Text style={[styles.bookNameText, { color: colors.text }]}>
+                {bookName}
+              </Text>
+              <Text style={[styles.chapterCount, { color: colors.textSecondary }]}>
+                총 {totalChapters}장
+              </Text>
+            </View>
+            <View style={styles.changeBookButton}>
+              <Text style={[styles.changeBookText, { color: colors.primary }]}>
+                책 변경
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+            </View>
+          </View>
+        </TouchableOpacity>
 
         {/* 장 그리드 */}
         <FlatList
@@ -131,6 +151,11 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
   },
+  bookInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   bookNameText: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -138,6 +163,15 @@ const styles = StyleSheet.create({
   },
   chapterCount: {
     fontSize: 14,
+  },
+  changeBookButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  changeBookText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginRight: 4,
   },
   list: {
     padding: 12,

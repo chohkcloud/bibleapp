@@ -62,6 +62,12 @@ export function ReadingScreen({ route, navigation }: Props) {
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [showNotes, setShowNotes] = useState(true); // 주석 표시 여부
 
+  // 범위 선택 모드
+  const [isRangeSelectMode, setIsRangeSelectMode] = useState(false);
+  const [rangeStart, setRangeStart] = useState<number | null>(null); // verse_num
+  const [rangeEnd, setRangeEnd] = useState<number | null>(null);
+  const [selectedRange, setSelectedRange] = useState<VerseWithMeta[]>([]);
+
   // 기본 헤더 숨기기
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -142,10 +148,115 @@ export function ReadingScreen({ route, navigation }: Props) {
 
   // 구절 선택
   const handleVersePress = (verse: VerseWithMeta) => {
+    // 범위 선택 모드일 때
+    if (isRangeSelectMode) {
+      handleRangeSelect(verse);
+      return;
+    }
+
+    // 일반 모드
     setSelectedVerse(verse);
     setNoteText(verse.memoContent || '');
     setIsEditingNote(false);
     setShowActionModal(true);
+  };
+
+  // 범위 선택 처리
+  const handleRangeSelect = (verse: VerseWithMeta) => {
+    if (rangeStart === null) {
+      // 시작점 설정
+      setRangeStart(verse.verse_num);
+      setRangeEnd(null);
+      setSelectedRange([verse]);
+    } else if (rangeEnd === null) {
+      // 끝점 설정
+      const start = Math.min(rangeStart, verse.verse_num);
+      const end = Math.max(rangeStart, verse.verse_num);
+      setRangeStart(start);
+      setRangeEnd(end);
+
+      // 범위 내 모든 절 선택
+      const rangeVerses = verses.filter(
+        v => v.verse_num >= start && v.verse_num <= end
+      );
+      setSelectedRange(rangeVerses);
+    } else {
+      // 새로운 선택 시작
+      setRangeStart(verse.verse_num);
+      setRangeEnd(null);
+      setSelectedRange([verse]);
+    }
+  };
+
+  // 범위 선택 모드 토글
+  const toggleRangeSelectMode = () => {
+    if (isRangeSelectMode) {
+      // 모드 해제 시 초기화
+      setRangeStart(null);
+      setRangeEnd(null);
+      setSelectedRange([]);
+    }
+    setIsRangeSelectMode(!isRangeSelectMode);
+  };
+
+  // 범위 선택 취소
+  const cancelRangeSelect = () => {
+    setRangeStart(null);
+    setRangeEnd(null);
+    setSelectedRange([]);
+    setIsRangeSelectMode(false);
+  };
+
+  // 범위 하이라이트 적용
+  const handleRangeHighlight = async (color: string) => {
+    if (selectedRange.length === 0) return;
+
+    try {
+      for (const verse of selectedRange) {
+        if (!verse.isHighlighted) {
+          await memoService.createHighlight(
+            verse.verse_id,
+            bibleVersion,
+            bookId,
+            chapter,
+            verse.verse_num,
+            color
+          );
+        }
+      }
+      loadData();
+      cancelRangeSelect();
+    } catch (error) {
+      console.error('Error applying range highlight:', error);
+      Alert.alert('오류', '하이라이트 적용에 실패했습니다.');
+    }
+  };
+
+  // 범위 하이라이트 제거
+  const handleRangeRemoveHighlight = async () => {
+    if (selectedRange.length === 0) return;
+
+    try {
+      for (const verse of selectedRange) {
+        if (verse.isHighlighted) {
+          await memoService.removeHighlightFromVerse(verse.verse_id);
+        }
+      }
+      loadData();
+      cancelRangeSelect();
+    } catch (error) {
+      console.error('Error removing range highlight:', error);
+      Alert.alert('오류', '하이라이트 제거에 실패했습니다.');
+    }
+  };
+
+  // 선택된 범위인지 확인
+  const isVerseInRange = (verseNum: number): boolean => {
+    if (!isRangeSelectMode) return false;
+    if (rangeStart === null) return false;
+    if (rangeEnd === null) return verseNum === rangeStart;
+    return verseNum >= Math.min(rangeStart, rangeEnd) &&
+           verseNum <= Math.max(rangeStart, rangeEnd);
   };
 
   // 북마크 토글
@@ -286,12 +397,24 @@ export function ReadingScreen({ route, navigation }: Props) {
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
           {bookName} {chapter}장
         </Text>
+        {/* 범위 선택 모드 버튼 */}
+        <TouchableOpacity
+          style={[
+            styles.rangeSelectButton,
+            isRangeSelectMode && { backgroundColor: colors.primary + '20' }
+          ]}
+          onPress={toggleRangeSelectMode}
+        >
+          <Text style={[styles.rangeSelectText, { color: isRangeSelectMode ? colors.primary : colors.textSecondary }]}>
+            ✂️
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.noteToggleButton}
           onPress={() => setShowNotes(!showNotes)}
         >
           <Text style={[styles.noteToggleText, { color: showNotes ? colors.primary : colors.textSecondary }]}>
-            {showNotes ? '📝' : '📝'}
+            📝
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -301,6 +424,23 @@ export function ReadingScreen({ route, navigation }: Props) {
           <Text style={[styles.listButtonText, { color: colors.primary }]}>목록</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 범위 선택 모드 안내 바 */}
+      {isRangeSelectMode && (
+        <View style={[styles.rangeSelectBar, { backgroundColor: colors.primary + '15' }]}>
+          <Text style={[styles.rangeSelectBarText, { color: colors.primary }]}>
+            {rangeStart === null
+              ? '📍 시작 절을 선택하세요'
+              : rangeEnd === null
+                ? `📍 ${rangeStart}절 선택됨 - 끝 절을 선택하세요`
+                : `✅ ${rangeStart}-${rangeEnd}절 선택됨 (${selectedRange.length}절)`
+            }
+          </Text>
+          <TouchableOpacity onPress={cancelRangeSelect}>
+            <Text style={[styles.rangeSelectCancelText, { color: colors.error }]}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView
         ref={scrollViewRef}
@@ -314,34 +454,39 @@ export function ReadingScreen({ route, navigation }: Props) {
           </Text>
         </View>
 
-          {/* 구절 목록 - 여러 구절 선택 가능하도록 하나의 Text로 통합 */}
+          {/* 구절 목록 - 각 구절을 개별 Pressable로 처리 */}
           <View style={styles.content}>
-            <Text selectable={true} style={[styles.versesContainer, { color: colors.text, fontSize, lineHeight: fontSize * 1.8 }]}>
-              {verses.map((verse, index) => (
-                <Text key={verse.verse_id}>
-                  {/* 구절 번호 - 터치 시 액션 모달 */}
-                  <Text
-                    style={[styles.verseNumberInline, { color: colors.primary }]}
-                    onPress={() => handleVersePress(verse)}
-                  >
-                    {verse.verse_num}
-                    {verse.isBookmarked && '🔖'}
-                    {verse.hasMemo && '📝'}
-                    {'  '}
-                  </Text>
-                  {/* 구절 텍스트 - 하이라이트 적용 */}
-                  <Text
-                    style={[
-                      verse.isHighlighted && { backgroundColor: verse.highlightColor + '50', borderRadius: 2 }
-                    ]}
-                    onLongPress={() => handleVersePress(verse)}
-                  >
-                    {verse.text}
-                  </Text>
-                  {index < verses.length - 1 && '\n'}
+            {verses.map((verse) => (
+              <Pressable
+                key={verse.verse_id}
+                style={({ pressed }) => [
+                  styles.verseRow,
+                  pressed && { backgroundColor: colors.primary + '10' },
+                  isVerseInRange(verse.verse_num) && { backgroundColor: colors.primary + '20', borderLeftWidth: 3, borderLeftColor: colors.primary }
+                ]}
+                onPress={() => handleVersePress(verse)}
+                onLongPress={() => handleVersePress(verse)}
+                delayLongPress={300}
+              >
+                {/* 구절 번호 */}
+                <Text style={[styles.verseNumberInline, { color: isVerseInRange(verse.verse_num) ? colors.primary : colors.primary, fontSize: fontSize * 0.75 }]}>
+                  {isVerseInRange(verse.verse_num) && '✓ '}
+                  {verse.verse_num}
+                  {verse.isBookmarked && ' 🔖'}
+                  {verse.hasMemo && ' 📝'}
                 </Text>
-              ))}
-            </Text>
+                {/* 구절 텍스트 */}
+                <Text
+                  style={[
+                    styles.verseTextStyle,
+                    { color: colors.text, fontSize, lineHeight: fontSize * 1.8 },
+                    verse.isHighlighted && { backgroundColor: verse.highlightColor + '50' }
+                  ]}
+                >
+                  {verse.text}
+                </Text>
+              </Pressable>
+            ))}
 
             {/* 인라인 주석 목록 (주석이 있는 구절만) */}
             {showNotes && verses.filter(v => v.hasMemo && v.memoContent).length > 0 && (
@@ -522,6 +667,32 @@ export function ReadingScreen({ route, navigation }: Props) {
             </Pressable>
           </KeyboardAvoidingView>
         </Modal>
+
+        {/* 범위 선택 액션 바 */}
+        {isRangeSelectMode && rangeEnd !== null && selectedRange.length > 0 && (
+          <View style={[styles.rangeActionBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            <Text style={[styles.rangeActionTitle, { color: colors.text }]}>
+              {selectedRange.length}절 선택됨
+            </Text>
+            <View style={styles.rangeActionButtons}>
+              {/* 하이라이트 색상 버튼들 */}
+              {HIGHLIGHT_COLORS.map((item) => (
+                <TouchableOpacity
+                  key={item.color}
+                  style={[styles.rangeColorButton, { backgroundColor: item.color }]}
+                  onPress={() => handleRangeHighlight(item.color)}
+                />
+              ))}
+              {/* 하이라이트 제거 버튼 */}
+              <TouchableOpacity
+                style={[styles.rangeColorButton, styles.rangeRemoveButton, { borderColor: colors.border }]}
+                onPress={handleRangeRemoveHighlight}
+              >
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
     </View>
   );
 }
@@ -587,9 +758,21 @@ const styles = StyleSheet.create({
   versesContainer: {
     // 전체 구절을 감싸는 Text 스타일
   },
+  verseRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+  },
   verseNumberInline: {
     fontSize: 12,
     fontWeight: 'bold',
+    marginRight: 10,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  verseTextStyle: {
+    flex: 1,
   },
   notesSection: {
     marginTop: 24,
@@ -633,6 +816,69 @@ const styles = StyleSheet.create({
   },
   noteToggleText: {
     fontSize: 18,
+  },
+  // 범위 선택 관련 스타일
+  rangeSelectButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  rangeSelectText: {
+    fontSize: 18,
+  },
+  rangeSelectBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  rangeSelectBarText: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  rangeSelectCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+  },
+  rangeActionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  rangeActionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rangeActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rangeColorButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rangeRemoveButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
   },
   inlineNote: {
     marginBottom: 12,
