@@ -51,4 +51,5 @@ export type SettingsStackParamList = {
   FontSize: undefined;
   About: undefined;
   BibleVersion: undefined;
+  ChocoAISettings: undefined;
 };

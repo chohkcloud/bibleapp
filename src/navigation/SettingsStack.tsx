@@ -6,6 +6,7 @@ import { PasswordChangeScreen } from '../screens/settings/PasswordChangeScreen';
 import { FontSizeScreen } from '../screens/settings/FontSizeScreen';
 import { AboutScreen } from '../screens/settings/AboutScreen';
 import { BibleVersionScreen } from '../screens/settings/BibleVersionScreen';
+import { ChocoAISettingsScreen } from '../screens/settings/ChocoAISettingsScreen';
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
 
@@ -21,6 +22,7 @@ export function SettingsStack() {
       <Stack.Screen name="FontSize" component={FontSizeScreen} />
       <Stack.Screen name="About" component={AboutScreen} />
       <Stack.Screen name="BibleVersion" component={BibleVersionScreen} />
+      <Stack.Screen name="ChocoAISettings" component={ChocoAISettingsScreen} />
     </Stack.Navigator>
   );
 }

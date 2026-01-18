@@ -255,6 +255,17 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        {/* AI 설정 */}
+        <SectionHeader title="AI" />
+        <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <SettingItem
+            icon="sparkles"
+            title="Choco AI 설정"
+            value="서버 연결"
+            onPress={() => navigation.navigate('ChocoAISettings')}
+          />
+        </View>
+
         {/* 정보 */}
         <SectionHeader title="정보" />
         <View style={[styles.section, { backgroundColor: colors.surface }]}>
