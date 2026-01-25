@@ -12,7 +12,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BibleStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useBibleStore } from '../../store';
 import { bibleService } from '../../services';
 
@@ -86,8 +85,7 @@ export function ChapterSelectScreen({ route, navigation }: Props) {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title={bookName} />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -96,8 +94,7 @@ export function ChapterSelectScreen({ route, navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title={bookName} />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 책 정보 - 터치하면 책 선택 화면으로 이동 */}
         <TouchableOpacity

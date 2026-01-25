@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { SettingsStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore, useAuthStore } from '../../store';
 import { authService, backupService } from '../../services';
 
@@ -184,8 +183,7 @@ export function SettingsScreen({ navigation }: Props) {
   );
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="설정" showBackButton={false} />
+    <SafeContainer edges={['top', 'bottom']}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         showsVerticalScrollIndicator={false}

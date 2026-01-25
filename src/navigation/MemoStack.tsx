@@ -12,13 +12,21 @@ const Stack = createNativeStackNavigator<MemoStackParamList>();
 export function MemoStack() {
   return (
     <Stack.Navigator
+      initialRouteName="MemoList"
       screenOptions={{
         headerShown: false,
       }}
     >
       <Stack.Screen name="MemoList" component={MemoListScreen} />
       <Stack.Screen name="MemoDetail" component={MemoDetailScreen} />
-      <Stack.Screen name="MemoEdit" component={MemoEditScreen} />
+      <Stack.Screen
+        name="MemoEdit"
+        component={MemoEditScreen}
+        options={{
+          animation: 'none',
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
       <Stack.Screen name="Analytics" component={AnalyticsScreen} />
       <Stack.Screen name="VerseHistory" component={VerseHistoryScreen} />
     </Stack.Navigator>

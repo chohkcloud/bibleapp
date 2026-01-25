@@ -14,7 +14,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MemoStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { memoService, bibleService } from '../../services';
 import type { Memo } from '../../types/database';
@@ -172,8 +171,7 @@ export function MemoListScreen({ navigation }: Props) {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="메모" showBackButton={false} />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -187,8 +185,7 @@ export function MemoListScreen({ navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="메모" showBackButton={false} />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 헤더 액션 */}
         <View style={[styles.filterHeader, { borderBottomColor: colors.border }]}>

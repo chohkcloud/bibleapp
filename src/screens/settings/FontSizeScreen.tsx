@@ -3,7 +3,6 @@ import { View, Text, StyleSheet } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 
 export function FontSizeScreen() {
@@ -11,8 +10,7 @@ export function FontSizeScreen() {
   const { fontSize, setFontSize } = useSettingsStore();
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="글자 크기" />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.preview, { backgroundColor: colors.surface }]}>
         <Text style={[styles.previewText, { color: colors.text, fontSize }]}>

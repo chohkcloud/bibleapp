@@ -9,12 +9,12 @@ import {
   Alert,
   Share,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { MemoStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { memoService, bibleService, chocoService } from '../../services';
 import type { HybridEmotionResult } from '../../services/chocoService';
@@ -171,26 +171,11 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     });
   };
 
-  // 헤더 오른쪽 버튼 컴포넌트
-  const headerRightComponent = (
-    <View style={styles.headerButtons}>
-      <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-        <Text style={{ color: colors.primary, fontSize: 14 }}>공유</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={handleEdit} style={styles.headerButton}>
-        <Text style={{ color: colors.primary, fontSize: 14 }}>수정</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={handleDelete} style={styles.headerButton}>
-        <Text style={{ color: colors.error, fontSize: 14 }}>삭제</Text>
-      </TouchableOpacity>
-    </View>
-  );
 
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="메모 상세" />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -203,8 +188,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   // 메모 없음
   if (!memo) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="메모 상세" />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.emptyContainer}>
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
@@ -217,8 +201,31 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="메모 상세" rightComponent={headerRightComponent} />
+    <SafeContainer edges={['top', 'bottom']}>
+      {/* 헤더 */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={styles.headerBackButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+
+        <Text style={[styles.headerTitle, { color: colors.text }]}>묵상 상세</Text>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleShare} style={styles.headerActionButton}>
+            <Ionicons name="share-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleEdit} style={styles.headerActionButton}>
+            <Ionicons name="create-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDelete} style={styles.headerActionButton}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         showsVerticalScrollIndicator={false}
@@ -508,12 +515,27 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
   },
-  headerButtons: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  headerBackButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerActions: {
     flexDirection: 'row',
   },
-  headerButton: {
-    padding: 4,
-    marginLeft: 12,
+  headerActionButton: {
+    padding: 8,
+    marginLeft: 4,
   },
   verseCard: {
     margin: 16,

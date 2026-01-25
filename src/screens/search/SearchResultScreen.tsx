@@ -11,7 +11,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SearchStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { bibleService } from '../../services';
 import type { Verse } from '../../types/database';
@@ -116,8 +115,7 @@ export function SearchResultScreen({ route, navigation }: Props) {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title={headerTitle} />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -133,8 +131,7 @@ export function SearchResultScreen({ route, navigation }: Props) {
   // 결과 없음
   if (results.length === 0) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title={headerTitle} />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>📖</Text>
@@ -152,8 +149,7 @@ export function SearchResultScreen({ route, navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title={headerTitle} />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 결과 헤더 */}
         <View style={[styles.infoHeader, { borderBottomColor: colors.border }]}>

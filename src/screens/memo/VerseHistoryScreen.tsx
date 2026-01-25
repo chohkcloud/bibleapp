@@ -150,8 +150,7 @@ export function VerseHistoryScreen({ route, navigation }: Props) {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="구절 기록" />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -162,8 +161,7 @@ export function VerseHistoryScreen({ route, navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="구절 기록" />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 구절 카드 */}
         {verseInfo && (

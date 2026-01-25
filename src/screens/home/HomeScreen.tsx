@@ -152,7 +152,7 @@ export function HomeScreen() {
   };
 
   return (
-    <SafeContainer edges={['bottom']}>
+    <SafeContainer edges={['top', 'bottom']}>
       <CustomHeader title="홈" showBackButton={false} />
       <ScrollView
         style={styles.container}

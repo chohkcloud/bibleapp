@@ -2,14 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 
 export function AboutScreen() {
   const { colors } = useTheme();
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="앱 정보" />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <Text style={[styles.appName, { color: colors.text }]}>성경앱</Text>

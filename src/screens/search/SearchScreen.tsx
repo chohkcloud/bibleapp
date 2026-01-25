@@ -17,7 +17,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SearchStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { bibleService } from '../../services';
 import type { Verse, Book } from '../../types/database';
@@ -207,8 +206,7 @@ export function SearchScreen({ navigation }: Props) {
   );
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="검색" showBackButton={false} />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 검색 입력 */}
         <View style={[styles.searchContainer, { backgroundColor: colors.surface }]}>

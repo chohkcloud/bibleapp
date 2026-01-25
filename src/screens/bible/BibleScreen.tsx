@@ -14,7 +14,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { BibleStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore, useBibleStore } from '../../store';
 import { bibleService } from '../../services';
 
@@ -146,8 +145,7 @@ export function BibleScreen({ navigation }: Props) {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="성경" showBackButton={false} />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
@@ -159,8 +157,7 @@ export function BibleScreen({ navigation }: Props) {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="성경" showBackButton={false} />
+    <SafeContainer edges={['top', 'bottom']}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 이어서 읽기 카드 */}
         <TouchableOpacity

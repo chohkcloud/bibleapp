@@ -11,7 +11,6 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useSettingsStore } from '../../store';
 import { analyticsService, bibleService } from '../../services';
 
@@ -138,8 +137,7 @@ export function AnalyticsScreen() {
   // 로딩 중
   if (isLoading) {
     return (
-      <SafeContainer edges={['bottom']}>
-        <CustomHeader title="통계" />
+      <SafeContainer edges={['top', 'bottom']}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -153,8 +151,7 @@ export function AnalyticsScreen() {
   }
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="통계" />
+    <SafeContainer edges={['top', 'bottom']}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         refreshControl={

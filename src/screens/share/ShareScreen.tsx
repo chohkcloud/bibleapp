@@ -110,8 +110,7 @@ export function ShareScreen({ route, navigation }: Props) {
   );
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="공유" />
+    <SafeContainer edges={['top', 'bottom']}>
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 템플릿 선택 */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>템플릿 선택</Text>

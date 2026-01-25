@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { SettingsStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import {
   saveApiKey,
   getApiKey,
@@ -44,6 +43,15 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
   const [latency, setLatency] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // 디버그 로그 추가 함수
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLogs(prev => [, ...prev.slice(0, 49)]);
+    console.log();
+  };
 
   // 초기값 저장 (변경 감지용)
   const [initialServerUrl, setInitialServerUrl] = useState('');
@@ -61,19 +69,26 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
   }, [serverUrl, apiKey, initialServerUrl, initialApiKey]);
 
   const loadSettings = async () => {
+    addLog('설정 로드 시작...');
+    addLog('Platform: ' + Platform.OS);
     try {
       // 서버 URL 로드
       const currentUrl = getActiveServerUrl();
       setServerUrl(currentUrl);
       setInitialServerUrl(currentUrl);
+      addLog('서버 URL: ' + currentUrl);
 
       // API Key 로드
       const storedApiKey = await getApiKey();
+      addLog('API Key 로드 결과: ' + (storedApiKey ? '있음 (' + storedApiKey.length + '자)' : '없음'));
       if (storedApiKey) {
         setApiKey(storedApiKey);
         setInitialApiKey(storedApiKey);
       }
+      addLog('설정 로드 완료');
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      addLog('설정 로드 실패: ' + errMsg);
       console.error('[ChocoAI] 설정 로드 실패:', error);
     }
   };
@@ -100,7 +115,9 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
       await saveApiKey(apiKey);
 
       // 연결 테스트
+      addLog('연결 테스트 시작: ' + serverUrl);
       const result = await checkServerHealth();
+      addLog('연결 결과: healthy=' + result.healthy + ', latency=' + result.latency);
 
       if (result.healthy) {
         setConnectionStatus('success');
@@ -244,8 +261,7 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeContainer edges={['bottom']}>
-      <CustomHeader title="Choco AI 설정" />
+    <SafeContainer edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -409,6 +425,40 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
               {'   '}• API Key가 올바른지 확인하세요.
             </Text>
           </View>
+
+          {/* 디버그 로그 */}
+          <TouchableOpacity
+            style={[styles.helpSection, { backgroundColor: colors.surface, marginTop: 24 }]}
+            onPress={() => setShowDebug(!showDebug)}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[styles.helpTitle, { color: colors.text, marginBottom: 0 }]}>
+                <Ionicons name="bug" size={16} color={colors.warning || '#FFA500'} /> 디버그 로그
+              </Text>
+              <Ionicons name={showDebug ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+          {showDebug && (
+            <View style={[styles.section, { backgroundColor: colors.surface, marginTop: 8 }]}>
+              <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                {debugLogs.length === 0 ? (
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>로그가 없습니다.</Text>
+                ) : (
+                  debugLogs.map((log, idx) => (
+                    <Text key={idx} style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                      {log}
+                    </Text>
+                  ))
+                )}
+              </ScrollView>
+              <TouchableOpacity
+                style={{ marginTop: 8, padding: 8, backgroundColor: colors.error + '20', borderRadius: 8, alignItems: 'center' }}
+                onPress={() => setDebugLogs([])}
+              >
+                <Text style={{ color: colors.error, fontSize: 12 }}>로그 지우기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.bottomSpacing} />
         </ScrollView>
