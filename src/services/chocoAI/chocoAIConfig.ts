@@ -22,8 +22,8 @@ export const getCurrentEnvironment = (): Environment => {
 // ============================================
 
 const SERVER_URLS: Record<Environment, string> = {
-  development: 'http://192.168.219.104:9090',
-  production: 'http://chocoai.duckdns.org:9090',
+  development: Platform.OS === 'android' ? 'http://10.0.2.2:9090' : 'http://192.168.219.104:9090',
+  production: 'http://192.168.219.104:9090',  // 같은 네트워크 내에서 사용
 };
 
 export const getServerUrl = (): string => {

@@ -26,7 +26,7 @@ import type { Verse, Memo } from '../../types/database';
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoEdit'>;
 
 export function MemoEditScreen({ route, navigation }: Props) {
-  const { memoId, verseId } = route.params;
+  const { memoId, verseId, bookId: paramBookId, chapter: paramChapter, verseRange } = route.params;
   const { colors } = useTheme();
   const { bibleVersion, language } = useSettingsStore();
   const insets = useSafeAreaInsets();
@@ -37,7 +37,9 @@ export function MemoEditScreen({ route, navigation }: Props) {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
   const [verse, setVerse] = useState<Verse | null>(null);
+  const [verses, setVerses] = useState<Verse[]>([]); // 다중 구절
   const [bookName, setBookName] = useState('');
+  const [verseRangeDisplay, setVerseRangeDisplay] = useState(''); // 구절 범위 표시용
   const [existingMemo, setExistingMemo] = useState<Memo | null>(null);
   const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -117,6 +119,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
       });
 
       if (memoId) {
+        // 기존 메모 수정 모드
         const memo = await memoService.getMemo(memoId);
         if (memo) {
           setExistingMemo(memo);
@@ -124,19 +127,51 @@ export function MemoEditScreen({ route, navigation }: Props) {
           setTags(memo.tags || '');
           setBookName(bookMap[memo.book_id] || `${memo.book_id}권`);
 
-          const verseData = await bibleService.getVerse(
-            bibleVersion,
-            memo.book_id,
-            memo.chapter,
-            memo.verse_num
-          );
-          setVerse(verseData);
+          // 다중 구절 지원: verse_range가 있으면 범위 표시
+          if (memo.verse_range) {
+            setVerseRangeDisplay(memo.verse_range);
+            // 첫 번째 구절만 대표로 로드
+            const verseData = await bibleService.getVerse(
+              bibleVersion,
+              memo.book_id,
+              memo.chapter,
+              memo.verse_start || memo.verse_num
+            );
+            setVerse(verseData);
+          } else {
+            setVerseRangeDisplay(`${memo.verse_num}`);
+            const verseData = await bibleService.getVerse(
+              bibleVersion,
+              memo.book_id,
+              memo.chapter,
+              memo.verse_num
+            );
+            setVerse(verseData);
+          }
+        }
+      } else if (verseRange && paramBookId && paramChapter) {
+        // 다중 구절 묵상 작성 모드 (범위 선택)
+        setBookName(bookMap[paramBookId] || `${paramBookId}권`);
+        setVerseRangeDisplay(verseRange);
+
+        // 범위 파싱해서 구절들 로드
+        const verseNums = parseVerseRangeSimple(verseRange);
+        const loadedVerses: Verse[] = [];
+        for (const vNum of verseNums.slice(0, 5)) { // 최대 5개만 로드 (성능)
+          const v = await bibleService.getVerse(bibleVersion, paramBookId, paramChapter, vNum);
+          if (v) loadedVerses.push(v);
+        }
+        setVerses(loadedVerses);
+        if (loadedVerses.length > 0) {
+          setVerse(loadedVerses[0]); // 첫 번째 구절을 대표로
         }
       } else if (verseId) {
-        const verseData = await bibleService.getVerseById(parseInt(verseId, 10));
+        // 단일 구절 묵상 작성 모드
+        const verseData = await bibleService.getVerseById(verseId); // parseInt 제거
         if (verseData) {
           setVerse(verseData);
           setBookName(bookMap[verseData.book_id] || `${verseData.book_id}권`);
+          setVerseRangeDisplay(`${verseData.verse_num}`);
         }
       }
     } catch (error) {
@@ -145,6 +180,23 @@ export function MemoEditScreen({ route, navigation }: Props) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 간단한 구절 범위 파싱 ("1-16" -> [1,2,...,16], "1,3,5" -> [1,3,5])
+  const parseVerseRangeSimple = (range: string): number[] => {
+    const verses: number[] = [];
+    const parts = range.split(',').map(p => p.trim());
+    for (const part of parts) {
+      if (part.includes('-')) {
+        const [start, end] = part.split('-').map(n => parseInt(n.trim(), 10));
+        for (let i = start; i <= end; i++) {
+          verses.push(i);
+        }
+      } else {
+        verses.push(parseInt(part, 10));
+      }
+    }
+    return [...new Set(verses)].sort((a, b) => a - b);
   };
 
   // 저장
@@ -168,12 +220,20 @@ export function MemoEditScreen({ route, navigation }: Props) {
           tags: tags.trim() || undefined,
         });
       } else {
+        // 다중 구절 지원: verseRange가 있으면 범위 정보 포함
+        const verseNums = verseRange ? parseVerseRangeSimple(verseRange) : [verse.verse_num];
+        const verseStart = Math.min(...verseNums);
+        const verseEnd = Math.max(...verseNums);
+
         await memoService.createMemo({
           verseId: verse.verse_id,
           bibleId: bibleVersion,
-          bookId: verse.book_id,
-          chapter: verse.chapter,
-          verseNum: verse.verse_num,
+          bookId: paramBookId || verse.book_id,
+          chapter: paramChapter || verse.chapter,
+          verseNum: verseStart, // 시작 절 (기존 호환)
+          verseStart,
+          verseEnd,
+          verseRange: verseRange || undefined,
           content: content.trim(),
           tags: tags.trim() || undefined,
         });
@@ -256,9 +316,9 @@ export function MemoEditScreen({ route, navigation }: Props) {
             <View style={[styles.verseCard, { backgroundColor: colors.surface }]}>
             <View style={styles.verseHeader}>
               <Text style={[styles.verseReference, { color: colors.primary }]} numberOfLines={1}>
-                {bookName} {verse.chapter}:{verse.verse_num}
+                {bookName} {paramChapter || verse.chapter}:{verseRangeDisplay || verse.verse_num}
               </Text>
-              {!isKeyboardVisible && verse.text.length > 50 && (
+              {!isKeyboardVisible && (verse.text.length > 50 || verses.length > 1) && (
                 <TouchableOpacity
                   onPress={() => setIsVerseExpanded(!isVerseExpanded)}
                   style={styles.expandButton}
@@ -270,12 +330,35 @@ export function MemoEditScreen({ route, navigation }: Props) {
               )}
             </View>
             {!isKeyboardVisible && (
-              <Text
-                style={[styles.verseText, { color: colors.text }]}
-                numberOfLines={isVerseExpanded ? undefined : 2}
-              >
-                {verse.text}
-              </Text>
+              <>
+                {verses.length > 1 ? (
+                  // 다중 구절 표시
+                  <View>
+                    {(isVerseExpanded ? verses : verses.slice(0, 2)).map((v, idx) => (
+                      <Text
+                        key={v.verse_id}
+                        style={[styles.verseText, { color: colors.text }]}
+                        numberOfLines={isVerseExpanded ? undefined : 1}
+                      >
+                        <Text style={{ fontWeight: '600', color: colors.primary }}>{v.verse_num}</Text> {v.text}
+                      </Text>
+                    ))}
+                    {!isVerseExpanded && verses.length > 2 && (
+                      <Text style={[styles.verseText, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                        ... 외 {verses.length - 2}절
+                      </Text>
+                    )}
+                  </View>
+                ) : (
+                  // 단일 구절 표시
+                  <Text
+                    style={[styles.verseText, { color: colors.text }]}
+                    numberOfLines={isVerseExpanded ? undefined : 2}
+                  >
+                    {verse.text}
+                  </Text>
+                )}
+              </>
             )}
             </View>
           </Pressable>

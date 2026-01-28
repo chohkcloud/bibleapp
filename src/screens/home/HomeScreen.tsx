@@ -10,7 +10,6 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
-import { CustomHeader } from '../../components/common';
 import { useBibleStore, useSettingsStore } from '../../store';
 import { analyticsService, memoService, bibleService } from '../../services';
 import type { Memo, Verse } from '../../types/database';
@@ -153,7 +152,6 @@ export function HomeScreen() {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
-      <CustomHeader title="홈" showBackButton={false} />
       <ScrollView
         style={styles.container}
         refreshControl={

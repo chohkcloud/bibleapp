@@ -14,13 +14,18 @@ import {
   KeyboardAvoidingView,
   Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { versesToRangeString } from '../../utils/bibleRefParser';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BibleStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
+import { ParallelBibleModal } from '../../components/bible';
 import { useBibleStore, useSettingsStore } from '../../store';
-import { bibleService, memoService } from '../../services';
+import { bibleService, memoService, bundledBibleService, dictionaryService } from '../../services';
 import type { Verse, Highlight, Memo } from '../../types/database';
+import type { BundledComment, CommentaryType } from '../../services/bundledBibleService';
+import type { StrongEntry, DictEntry } from '../../types/dictionary';
 
 // 상태바 높이 계산
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 44;
@@ -48,7 +53,7 @@ export function ReadingScreen({ route, navigation }: Props) {
   const { bookId, chapter } = route.params;
   const { colors } = useTheme();
   const { setCurrentBook, setCurrentChapter } = useBibleStore();
-  const { fontSize, bibleVersion, language } = useSettingsStore();
+  const { fontSize, bibleVersion, language, commentaryType, setCommentaryType } = useSettingsStore();
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -61,6 +66,23 @@ export function ReadingScreen({ route, navigation }: Props) {
   const [noteText, setNoteText] = useState('');
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [showNotes, setShowNotes] = useState(true); // 주석 표시 여부
+
+  // 주석(Commentary) 관련 상태
+  const [showCommentaryModal, setShowCommentaryModal] = useState(false);
+  const [verseComments, setVerseComments] = useState<BundledComment[]>([]);
+  const [chapterComments, setChapterComments] = useState<BundledComment[]>([]);
+
+  // 비교 성경 모달
+  const [showParallelModal, setShowParallelModal] = useState(false);
+
+  // 사전 모달
+  const [showDictModal, setShowDictModal] = useState(false);
+  const [dictSearchQuery, setDictSearchQuery] = useState('');
+  const [dictSearchResults, setDictSearchResults] = useState<DictEntry[]>([]);
+  const [strongSearchResults, setStrongSearchResults] = useState<StrongEntry[]>([]);
+  const [selectedDictEntry, setSelectedDictEntry] = useState<DictEntry | null>(null);
+  const [selectedStrongEntry, setSelectedStrongEntry] = useState<StrongEntry | null>(null);
+  const [isDictSearching, setIsDictSearching] = useState(false);
 
   // 범위 선택 모드
   const [isRangeSelectMode, setIsRangeSelectMode] = useState(false);
@@ -132,6 +154,10 @@ export function ReadingScreen({ route, navigation }: Props) {
 
       setVerses(versesWithMeta);
 
+      // 주석(Commentary) 로드
+      const comments = bundledBibleService.getComments(bookId, chapter, commentaryType);
+      setChapterComments(comments);
+
       // 현재 위치 저장
       setCurrentBook(bookId);
       setCurrentChapter(chapter);
@@ -140,7 +166,7 @@ export function ReadingScreen({ route, navigation }: Props) {
     } finally {
       setIsLoading(false);
     }
-  }, [bookId, chapter, bibleVersion, language, setCurrentBook, setCurrentChapter]);
+  }, [bookId, chapter, bibleVersion, language, commentaryType, setCurrentBook, setCurrentChapter]);
 
   useEffect(() => {
     loadData();
@@ -188,15 +214,18 @@ export function ReadingScreen({ route, navigation }: Props) {
     }
   };
 
-  // 범위 선택 모드 토글
-  const toggleRangeSelectMode = () => {
-    if (isRangeSelectMode) {
-      // 모드 해제 시 초기화
-      setRangeStart(null);
+  // 구절 롱프레스 - 범위 선택 모드 진입
+  const handleVerseLongPress = (verse: VerseWithMeta) => {
+    if (!isRangeSelectMode) {
+      // 범위 선택 모드 진입 및 첫 구절 선택
+      setIsRangeSelectMode(true);
+      setRangeStart(verse.verse_num);
       setRangeEnd(null);
-      setSelectedRange([]);
+      setSelectedRange([verse]);
+    } else {
+      // 이미 범위 선택 모드면 끝점으로 처리
+      handleRangeSelect(verse);
     }
-    setIsRangeSelectMode(!isRangeSelectMode);
   };
 
   // 범위 선택 취소
@@ -250,6 +279,51 @@ export function ReadingScreen({ route, navigation }: Props) {
     }
   };
 
+  // 범위 복사
+  const handleRangeCopy = async () => {
+    if (selectedRange.length === 0) return;
+
+    try {
+      const sortedVerses = [...selectedRange].sort((a, b) => a.verse_num - b.verse_num);
+      const verseNums = sortedVerses.map(v => v.verse_num);
+      const rangeStr = versesToRangeString(verseNums);
+
+      // 본문 구성: "요한복음 3:1-16\n1 태초에... 2 ..."
+      const header = `${bookName} ${chapter}:${rangeStr}`;
+      const body = sortedVerses.map(v => `${v.verse_num} ${v.text}`).join('\n');
+      const textToCopy = `${header}\n\n${body}`;
+
+      await Clipboard.setStringAsync(textToCopy);
+      Alert.alert('복사 완료', `${selectedRange.length}절이 복사되었습니다.`);
+      cancelRangeSelect();
+    } catch (error) {
+      console.error('Error copying range:', error);
+      Alert.alert('오류', '복사에 실패했습니다.');
+    }
+  };
+
+  // 범위 묵상 작성
+  const handleRangeMemo = () => {
+    if (selectedRange.length === 0) return;
+
+    const sortedVerses = [...selectedRange].sort((a, b) => a.verse_num - b.verse_num);
+    const firstVerse = sortedVerses[0];
+    const verseNums = sortedVerses.map(v => v.verse_num);
+    const rangeStr = versesToRangeString(verseNums);
+
+    cancelRangeSelect();
+
+    navigation.navigate('MemoTab' as any, {
+      screen: 'MemoEdit',
+      params: {
+        verseId: firstVerse.verse_id,
+        bookId: bookId,
+        chapter: chapter,
+        verseRange: rangeStr,  // 다중 구절 범위 전달
+      },
+    });
+  };
+
   // 선택된 범위인지 확인
   const isVerseInRange = (verseNum: number): boolean => {
     if (!isRangeSelectMode) return false;
@@ -295,7 +369,11 @@ export function ReadingScreen({ route, navigation }: Props) {
     setShowActionModal(false);
     navigation.navigate('MemoTab' as any, {
       screen: 'MemoEdit',
-      params: { verseId: selectedVerse.verse_id },
+      params: {
+        verseId: selectedVerse.verse_id,  // number 타입으로 전달
+        bookId: bookId,
+        chapter: chapter,
+      },
     });
   };
 
@@ -325,6 +403,68 @@ export function ReadingScreen({ route, navigation }: Props) {
       console.error('Error saving note:', error);
       Alert.alert('오류', '주석 저장에 실패했습니다.');
     }
+  };
+
+  // 주석(Commentary) 보기
+  const handleShowCommentary = () => {
+    if (!selectedVerse) return;
+    const comments = bundledBibleService.getVerseComments(bookId, chapter, selectedVerse.verse_num, commentaryType);
+    setVerseComments(comments);
+    setShowCommentaryModal(true);
+  };
+
+  // 사전 검색
+  const handleDictSearch = async (query: string) => {
+    if (!query.trim()) {
+      setDictSearchResults([]);
+      setStrongSearchResults([]);
+      return;
+    }
+
+    setIsDictSearching(true);
+    try {
+      const [dictResults, strongH, strongG] = await Promise.all([
+        dictionaryService.searchBibleDictionary(query),
+        dictionaryService.searchStrong(query, 'H'),
+        dictionaryService.searchStrong(query, 'G'),
+      ]);
+      setDictSearchResults(dictResults.slice(0, 20));
+      setStrongSearchResults([...strongH, ...strongG].slice(0, 20));
+    } catch (error) {
+      console.error('Dictionary search error:', error);
+    } finally {
+      setIsDictSearching(false);
+    }
+  };
+
+  // 사전 모달 열기
+  const handleShowDictionary = () => {
+    // 선택된 구절의 첫 번째 단어로 자동 검색
+    if (selectedVerse) {
+      const firstWord = selectedVerse.text.split(/[\s,.:;!?"'()]+/)[0];
+      if (firstWord) {
+        setDictSearchQuery(firstWord);
+        handleDictSearch(firstWord);
+      }
+    }
+    setShowDictModal(true);
+  };
+
+  // 사전 모달 닫기
+  const closeDictModal = () => {
+    setShowDictModal(false);
+    setDictSearchQuery('');
+    setDictSearchResults([]);
+    setStrongSearchResults([]);
+    setSelectedDictEntry(null);
+    setSelectedStrongEntry(null);
+  };
+
+  // 특정 절에 주석이 있는지 확인
+  const hasCommentary = (verseNum: number): boolean => {
+    return chapterComments.some(
+      c => verseNum >= c.verseStart && verseNum <= c.verseEnd
+    );
   };
 
   // 주석 삭제
@@ -397,18 +537,6 @@ export function ReadingScreen({ route, navigation }: Props) {
         <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
           {bookName} {chapter}장
         </Text>
-        {/* 범위 선택 모드 버튼 */}
-        <TouchableOpacity
-          style={[
-            styles.rangeSelectButton,
-            isRangeSelectMode && { backgroundColor: colors.primary + '20' }
-          ]}
-          onPress={toggleRangeSelectMode}
-        >
-          <Text style={[styles.rangeSelectText, { color: isRangeSelectMode ? colors.primary : colors.textSecondary }]}>
-            ✂️
-          </Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={styles.noteToggleButton}
           onPress={() => setShowNotes(!showNotes)}
@@ -465,8 +593,8 @@ export function ReadingScreen({ route, navigation }: Props) {
                   isVerseInRange(verse.verse_num) && { backgroundColor: colors.primary + '20', borderLeftWidth: 3, borderLeftColor: colors.primary }
                 ]}
                 onPress={() => handleVersePress(verse)}
-                onLongPress={() => handleVersePress(verse)}
-                delayLongPress={300}
+                onLongPress={() => handleVerseLongPress(verse)}
+                delayLongPress={500}
               >
                 {/* 구절 번호 */}
                 <Text style={[styles.verseNumberInline, { color: isVerseInRange(verse.verse_num) ? colors.primary : colors.primary, fontSize: fontSize * 0.75 }]}>
@@ -474,6 +602,7 @@ export function ReadingScreen({ route, navigation }: Props) {
                   {verse.verse_num}
                   {verse.isBookmarked && ' 🔖'}
                   {verse.hasMemo && ' 📝'}
+                  {hasCommentary(verse.verse_num) && ' 📖'}
                 </Text>
                 {/* 구절 텍스트 */}
                 <Text
@@ -642,6 +771,39 @@ export function ReadingScreen({ route, navigation }: Props) {
                     )}
                   </View>
 
+                  {/* 주석(Commentary), 사전, 비교 성경 버튼 */}
+                  <View style={styles.extraButtonsRow}>
+                    {hasCommentary(selectedVerse.verse_num) && (
+                      <TouchableOpacity
+                        style={[styles.commentaryButton, { backgroundColor: colors.secondary + '20', borderColor: colors.secondary, flex: 1, marginRight: 8 }]}
+                        onPress={handleShowCommentary}
+                      >
+                        <Text style={[styles.commentaryButtonText, { color: colors.secondary }]}>
+                          📖 주석
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.commentaryButton, { backgroundColor: '#10B981' + '20', borderColor: '#10B981', flex: 1, marginRight: 8 }]}
+                      onPress={handleShowDictionary}
+                    >
+                      <Text style={[styles.commentaryButtonText, { color: '#10B981' }]}>
+                        📚 사전
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.commentaryButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary, flex: 1 }]}
+                      onPress={() => {
+                        setShowActionModal(false);
+                        setShowParallelModal(true);
+                      }}
+                    >
+                      <Text style={[styles.commentaryButtonText, { color: colors.primary }]}>
+                        🔄 비교
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
                   {/* 액션 버튼 */}
                   <View style={styles.actionButtons}>
                     <TouchableOpacity
@@ -668,30 +830,317 @@ export function ReadingScreen({ route, navigation }: Props) {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* 범위 선택 액션 바 */}
+        {/* 주석(Commentary) 모달 */}
+        <Modal
+          visible={showCommentaryModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowCommentaryModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowCommentaryModal(false)}
+          >
+            <View
+              style={[styles.commentaryModalContent, { backgroundColor: colors.surface }]}
+            >
+              <Pressable onPress={(e) => e.stopPropagation()}>
+                {/* 헤더 */}
+                <View style={styles.commentaryHeader}>
+                  <Text style={[styles.commentaryTitle, { color: colors.text }]}>
+                    📖 {commentaryType === 'MH' ? '매튜헨리' : '토마호크'} 주석
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowCommentaryModal(false)}>
+                    <Text style={[styles.commentaryCloseText, { color: colors.textSecondary }]}>닫기</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 주석 타입 선택 */}
+                <View style={styles.commentaryTypeSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.commentaryTypeButton,
+                      commentaryType === 'TH' && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => {
+                      setCommentaryType('TH');
+                      const newComments = bundledBibleService.getVerseComments(bookId, chapter, selectedVerse?.verse_num || 1, 'TH');
+                      setVerseComments(newComments);
+                    }}
+                  >
+                    <Text style={[styles.commentaryTypeText, { color: commentaryType === 'TH' ? '#fff' : colors.text }]}>
+                      토마호크
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.commentaryTypeButton,
+                      commentaryType === 'MH' && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => {
+                      setCommentaryType('MH');
+                      const newComments = bundledBibleService.getVerseComments(bookId, chapter, selectedVerse?.verse_num || 1, 'MH');
+                      setVerseComments(newComments);
+                    }}
+                  >
+                    <Text style={[styles.commentaryTypeText, { color: commentaryType === 'MH' ? '#fff' : colors.text }]}>
+                      매튜헨리
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 구절 참조 */}
+                {selectedVerse && (
+                  <Text style={[styles.commentaryVerseRef, { color: colors.primary }]}>
+                    {bookName} {chapter}:{selectedVerse.verse_num}
+                  </Text>
+                )}
+
+                {/* 주석 내용 */}
+                <ScrollView style={styles.commentaryScrollView} showsVerticalScrollIndicator={false}>
+                  {verseComments.length > 0 ? (
+                    verseComments.map((comment, index) => (
+                      <View key={index} style={[styles.commentaryItem, { borderBottomColor: colors.border }]}>
+                        {comment.verseStart !== comment.verseEnd && (
+                          <Text style={[styles.commentaryVerseRange, { color: colors.textSecondary }]}>
+                            {comment.verseStart}-{comment.verseEnd}절
+                          </Text>
+                        )}
+                        {comment.subject && (
+                          <Text style={[styles.commentarySubject, { color: colors.text }]}>
+                            {comment.subject}
+                          </Text>
+                        )}
+                        <Text style={[styles.commentaryNote, { color: colors.text }]}>
+                          {comment.note}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.noCommentaryText, { color: colors.textSecondary }]}>
+                      이 구절에 대한 주석이 없습니다.
+                    </Text>
+                  )}
+                </ScrollView>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* 범위 선택 플로팅 액션 바 */}
         {isRangeSelectMode && rangeEnd !== null && selectedRange.length > 0 && (
           <View style={[styles.rangeActionBar, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-            <Text style={[styles.rangeActionTitle, { color: colors.text }]}>
-              {selectedRange.length}절 선택됨
-            </Text>
+            {/* 상단: 선택 정보 */}
+            <View style={styles.rangeActionHeader}>
+              <Text style={[styles.rangeActionTitle, { color: colors.text }]}>
+                {rangeStart}-{rangeEnd}절 ({selectedRange.length}절 선택)
+              </Text>
+              <TouchableOpacity onPress={cancelRangeSelect}>
+                <Text style={[styles.rangeActionCancelText, { color: colors.error }]}>취소</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 하단: 액션 버튼들 */}
             <View style={styles.rangeActionButtons}>
-              {/* 하이라이트 색상 버튼들 */}
-              {HIGHLIGHT_COLORS.map((item) => (
-                <TouchableOpacity
-                  key={item.color}
-                  style={[styles.rangeColorButton, { backgroundColor: item.color }]}
-                  onPress={() => handleRangeHighlight(item.color)}
-                />
-              ))}
-              {/* 하이라이트 제거 버튼 */}
+              {/* 복사 버튼 */}
               <TouchableOpacity
-                style={[styles.rangeColorButton, styles.rangeRemoveButton, { borderColor: colors.border }]}
-                onPress={handleRangeRemoveHighlight}
+                style={[styles.rangeActionButton, { backgroundColor: colors.primary + '15' }]}
+                onPress={handleRangeCopy}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>✕</Text>
+                <Text style={[styles.rangeActionButtonText, { color: colors.primary }]}>📋 복사</Text>
+              </TouchableOpacity>
+
+              {/* 하이라이트 버튼 (색상 선택) */}
+              <View style={styles.rangeHighlightSection}>
+                {HIGHLIGHT_COLORS.slice(0, 3).map((item) => (
+                  <TouchableOpacity
+                    key={item.color}
+                    style={[styles.rangeColorButton, { backgroundColor: item.color }]}
+                    onPress={() => handleRangeHighlight(item.color)}
+                  />
+                ))}
+                {/* 하이라이트 제거 */}
+                <TouchableOpacity
+                  style={[styles.rangeColorButton, styles.rangeRemoveButton, { borderColor: colors.border }]}
+                  onPress={handleRangeRemoveHighlight}
+                >
+                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 묵상 버튼 */}
+              <TouchableOpacity
+                style={[styles.rangeActionButton, { backgroundColor: colors.secondary + '15' }]}
+                onPress={handleRangeMemo}
+              >
+                <Text style={[styles.rangeActionButtonText, { color: colors.secondary }]}>📝 묵상</Text>
               </TouchableOpacity>
             </View>
           </View>
+        )}
+
+        {/* 사전 검색 모달 */}
+        <Modal
+          visible={showDictModal}
+          transparent
+          animationType="slide"
+          onRequestClose={closeDictModal}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={closeDictModal}
+          >
+            <View
+              style={[styles.dictModalContent, { backgroundColor: colors.surface }]}
+            >
+              <Pressable onPress={(e) => e.stopPropagation()}>
+                {/* 헤더 */}
+                <View style={styles.dictModalHeader}>
+                  <Text style={[styles.dictModalTitle, { color: colors.text }]}>
+                    📚 성경 사전
+                  </Text>
+                  <TouchableOpacity onPress={closeDictModal}>
+                    <Text style={[styles.dictModalCloseText, { color: colors.textSecondary }]}>닫기</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 검색 입력 */}
+                <View style={[styles.dictSearchContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.dictSearchInput, { color: colors.text }]}
+                    placeholder="단어 검색..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={dictSearchQuery}
+                    onChangeText={(text) => {
+                      setDictSearchQuery(text);
+                      handleDictSearch(text);
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {dictSearchQuery.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setDictSearchQuery('');
+                        setDictSearchResults([]);
+                        setStrongSearchResults([]);
+                      }}
+                    >
+                      <Text style={{ color: colors.textSecondary }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* 검색 결과 */}
+                <ScrollView style={styles.dictResultsScroll} showsVerticalScrollIndicator={false}>
+                  {isDictSearching ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 20 }} />
+                  ) : (
+                    <>
+                      {/* Strong's 결과 */}
+                      {strongSearchResults.length > 0 && (
+                        <View style={styles.dictResultSection}>
+                          <Text style={[styles.dictResultSectionTitle, { color: colors.textSecondary }]}>
+                            원어 사전 ({strongSearchResults.length})
+                          </Text>
+                          {strongSearchResults.map((entry, index) => (
+                            <TouchableOpacity
+                              key={`strong-${entry.num}-${index}`}
+                              style={[styles.dictResultItem, { backgroundColor: colors.background, borderColor: colors.border }]}
+                              onPress={() => setSelectedStrongEntry(selectedStrongEntry?.num === entry.num ? null : entry)}
+                            >
+                              <View style={styles.dictResultHeader}>
+                                <Text style={[styles.dictResultNum, { color: colors.primary }]}>{entry.num}</Text>
+                                <Text style={[styles.dictResultOriginal, { color: colors.text }]}>{entry.original}</Text>
+                              </View>
+                              <Text style={[styles.dictResultTranslit, { color: colors.textSecondary }]}>
+                                {entry.transliteration} ({entry.pronunciationKo})
+                              </Text>
+                              {selectedStrongEntry?.num === entry.num ? (
+                                <Text style={[styles.dictResultMeaning, { color: colors.text }]}>
+                                  {entry.meaningKo || entry.meaning}
+                                </Text>
+                              ) : (
+                                <Text style={[styles.dictResultMeaning, { color: colors.text }]} numberOfLines={2}>
+                                  {entry.meaningKo || entry.meaning}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* 성경 사전 결과 */}
+                      {dictSearchResults.length > 0 && (
+                        <View style={styles.dictResultSection}>
+                          <Text style={[styles.dictResultSectionTitle, { color: colors.textSecondary }]}>
+                            성경 사전 ({dictSearchResults.length})
+                          </Text>
+                          {dictSearchResults.map((entry, index) => (
+                            <TouchableOpacity
+                              key={`dict-${entry.id}-${index}`}
+                              style={[styles.dictResultItem, { backgroundColor: colors.background, borderColor: colors.border }]}
+                              onPress={() => setSelectedDictEntry(selectedDictEntry?.id === entry.id ? null : entry)}
+                            >
+                              <View style={styles.dictResultHeader}>
+                                <Text style={[styles.dictResultTerm, { color: colors.primary }]}>{entry.term}</Text>
+                                {entry.termEn && (
+                                  <Text style={[styles.dictResultTermEn, { color: colors.textSecondary }]}>({entry.termEn})</Text>
+                                )}
+                              </View>
+                              <View style={[styles.dictCategoryBadge, { backgroundColor: colors.primary + '15' }]}>
+                                <Text style={[styles.dictCategoryText, { color: colors.primary }]}>{entry.category}</Text>
+                              </View>
+                              {selectedDictEntry?.id === entry.id ? (
+                                <Text style={[styles.dictResultDefinition, { color: colors.text }]}>
+                                  {entry.definition}
+                                </Text>
+                              ) : (
+                                <Text style={[styles.dictResultDefinition, { color: colors.text }]} numberOfLines={3}>
+                                  {entry.shortMeaning || entry.definition}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* 결과 없음 */}
+                      {dictSearchQuery.trim() && dictSearchResults.length === 0 && strongSearchResults.length === 0 && !isDictSearching && (
+                        <View style={styles.dictNoResults}>
+                          <Text style={[styles.dictNoResultsText, { color: colors.textSecondary }]}>
+                            검색 결과가 없습니다
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* 검색 가이드 */}
+                      {!dictSearchQuery.trim() && (
+                        <View style={styles.dictGuide}>
+                          <Text style={[styles.dictGuideText, { color: colors.textSecondary }]}>
+                            💡 단어를 입력하여 성경 사전과 원어 사전을 검색하세요
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* 비교 성경 모달 */}
+        {selectedVerse && (
+          <ParallelBibleModal
+            visible={showParallelModal}
+            onClose={() => setShowParallelModal(false)}
+            bookId={bookId}
+            chapter={chapter}
+            verseNum={selectedVerse.verse_num}
+            bookName={bookName}
+          />
         )}
     </View>
   );
@@ -848,11 +1297,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderTopWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
@@ -860,19 +1306,43 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  rangeActionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   rangeActionTitle: {
     fontSize: 14,
     fontWeight: '600',
   },
+  rangeActionCancelText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   rangeActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rangeActionButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  rangeActionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  rangeHighlightSection: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   rangeColorButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginLeft: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginHorizontal: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1019,5 +1489,201 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Commentary 스타일
+  extraButtonsRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  commentaryButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  commentaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  commentaryModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  commentaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  commentaryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  commentaryCloseText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  commentaryVerseRef: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  commentaryScrollView: {
+    maxHeight: 400,
+  },
+  commentaryItem: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  commentaryVerseRange: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  commentarySubject: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  commentaryNote: {
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  noCommentaryText: {
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  commentaryTypeSelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  commentaryTypeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+  },
+  commentaryTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // 사전 모달 스타일
+  dictModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: '85%',
+  },
+  dictModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dictModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  dictModalCloseText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dictSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  dictSearchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  dictResultsScroll: {
+    maxHeight: 450,
+  },
+  dictResultSection: {
+    marginBottom: 16,
+  },
+  dictResultSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  dictResultItem: {
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  dictResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  dictResultNum: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  dictResultOriginal: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  dictResultTranslit: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  dictResultMeaning: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  dictResultTerm: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  dictResultTermEn: {
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  dictCategoryBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginVertical: 6,
+  },
+  dictCategoryText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  dictResultDefinition: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  dictNoResults: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  dictNoResultsText: {
+    fontSize: 14,
+  },
+  dictGuide: {
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  dictGuideText: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

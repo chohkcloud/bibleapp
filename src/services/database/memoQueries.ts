@@ -56,11 +56,15 @@ export async function createMemo(dto: CreateMemoDto): Promise<string> {
   if (isWeb) {
     const memo: Memo = {
       memo_id: memoId,
+      id: memoId,  // memo_id 별칭
       verse_id: dto.verse_id,
       bible_id: dto.bible_id,
       book_id: dto.book_id,
       chapter: dto.chapter,
       verse_num: dto.verse_num,
+      verse_start: dto.verse_start,
+      verse_end: dto.verse_end,
+      verse_range: dto.verse_range,
       content: dto.content,
       is_encrypted: 1,
       created_at: now,

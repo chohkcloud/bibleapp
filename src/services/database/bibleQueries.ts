@@ -193,6 +193,13 @@ export async function getChapterVersesWithMeta(
   const bibleDb = databaseService.getBibleDb();
   const userDb = databaseService.getUserDb();
 
+  if (!bibleDb || !userDb) {
+    console.error('[bibleQueries] DB not initialized');
+    return [];
+  }
+
+  console.log(`[bibleQueries] getChapterVersesWithMeta: bibleId=${bibleId}, bookId=${bookId}, chapter=${chapter}`);
+
   // 먼저 구절 조회
   const verses = await bibleDb.getAllAsync<Verse>(
     `SELECT * FROM verses
@@ -200,6 +207,8 @@ export async function getChapterVersesWithMeta(
      ORDER BY verse_num`,
     [bibleId, bookId, chapter]
   );
+
+  console.log(`[bibleQueries] Found ${verses.length} verses`);
 
   // 메모 및 하이라이트 정보 조회
   const versesWithMeta: VerseWithMeta[] = await Promise.all(
@@ -395,6 +404,43 @@ export async function searchVersesSimple(
      LIMIT ? OFFSET ?`,
     [langId, bibleId, `%${query}%`, limit, offset]
   );
+}
+
+/**
+ * 검색 결과 개수 조회 (페이징용)
+ */
+export async function getSearchCount(
+  bibleId: string,
+  query: string,
+  langId: string,
+  bookId?: number
+): Promise<number> {
+  if (isWeb) {
+    // 웹 목업
+    const filtered = MOCK_VERSES.filter(
+      v => v.bible_id === bibleId && v.text.includes(query) && (!bookId || v.book_id === bookId)
+    );
+    return filtered.length;
+  }
+
+  const db = databaseService.getBibleDb();
+  if (!db) return 0;
+
+  if (bookId) {
+    const result = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) as count FROM verses
+       WHERE bible_id = ? AND book_id = ? AND text LIKE ?`,
+      [bibleId, bookId, `%${query}%`]
+    );
+    return result?.count ?? 0;
+  }
+
+  const result = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) as count FROM verses
+     WHERE bible_id = ? AND text LIKE ?`,
+    [bibleId, `%${query}%`]
+  );
+  return result?.count ?? 0;
 }
 
 /**

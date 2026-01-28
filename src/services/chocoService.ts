@@ -51,14 +51,16 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeout: numb
 }
 
 class ChocoService {
-  private baseUrl: string;
   private isAvailable: boolean = false;
   private lastHealthCheck: number = 0;
   private lastFailedCheck: number = 0;
   private healthCheckInterval: number = 60000;
-  private failedCooldownInterval: number = 3 * 60 * 60 * 1000;
+  private failedCooldownInterval: number = 5 * 60 * 1000; // 5분으로 단축
 
-  constructor() { this.baseUrl = getBaseUrl(); }
+  constructor() {}
+
+  // 항상 최신 URL 사용
+  private get baseUrl(): string { return getBaseUrl(); }
 
   async checkHealth(): Promise<HealthCheckResult | null> {
     try {
@@ -144,9 +146,15 @@ class ChocoService {
 
   serializeEmotionResult(result: HybridEmotionResult): string { return JSON.stringify(result); }
   parseEmotionResult(json: string): HybridEmotionResult | null { try { return JSON.parse(json); } catch { return null; } }
-  setBaseUrl(url: string): void { this.baseUrl = url; this.isAvailable = false; this.lastHealthCheck = 0; this.lastFailedCheck = 0; }
+  refreshUrl(): void { this.isAvailable = false; this.lastHealthCheck = 0; this.lastFailedCheck = 0; }
   getBaseUrl(): string { return this.baseUrl; }
-  resetCooldown(): void { this.lastFailedCheck = 0; }
+  resetCooldown(): void { this.lastFailedCheck = 0; this.isAvailable = false; this.lastHealthCheck = 0; }
 }
 
 export const chocoService = new ChocoService();
+
+// 쿨다운 리셋 함수 (설정 변경 시 호출)
+export const resetChocoServiceCooldown = (): void => {
+  chocoService.resetCooldown();
+  console.log('[ChocoService] 쿨다운 리셋됨');
+};

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 type Language = 'ko' | 'en' | 'ja';
+type CommentaryType = 'MH' | 'TH'; // MH: 매튜헨리, TH: 토마호크
 
 interface SettingsState {
   // 기존 설정
@@ -18,6 +19,9 @@ interface SettingsState {
   downloadedVersions: string[];
   preferredVersionByLang: Record<string, string>;
 
+  // 주석 설정
+  commentaryType: CommentaryType;
+
   // 기존 액션
   setFontSize: (size: number) => void;
   setThemeMode: (mode: ThemeMode) => void;
@@ -31,6 +35,9 @@ interface SettingsState {
   removeDownloadedVersion: (versionId: string) => void;
   setPreferredVersion: (langId: string, versionId: string) => void;
   getPreferredVersion: (langId: string) => string | undefined;
+
+  // 주석 액션
+  setCommentaryType: (type: CommentaryType) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -40,13 +47,16 @@ export const useSettingsStore = create<SettingsState>()(
       fontSize: 16,
       themeMode: 'light',
       language: 'ko',
-      bibleVersion: 'KRV',
+      bibleVersion: 'KRV',  // 개역한글 (번들 포함)
       autoLockEnabled: true,
       autoLockTimeout: 60000,
 
       // 다중 버전 지원 추가
-      downloadedVersions: ['KRV'], // 기본 번들 버전
-      preferredVersionByLang: { ko: 'KRV' },
+      downloadedVersions: ['KRV', 'HCV', 'HKJ', 'HML', 'HRV', 'HSN', 'KJV', 'NIV', 'ASV', 'NAS'], // 번들 버전
+      preferredVersionByLang: { ko: 'KRV', en: 'KJV' },
+
+      // 주석 설정 기본값
+      commentaryType: 'TH', // 토마호크 주석 기본
 
       // 기존 액션
       setFontSize: (size) => set({ fontSize: size }),
@@ -80,6 +90,9 @@ export const useSettingsStore = create<SettingsState>()(
       getPreferredVersion: (langId) => {
         return get().preferredVersionByLang[langId];
       },
+
+      // 주석 액션
+      setCommentaryType: (type) => set({ commentaryType: type }),
     }),
     {
       name: 'bible-app-settings',
@@ -87,3 +100,5 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+export type { CommentaryType };

@@ -39,7 +39,13 @@ export type SearchStackParamList = {
 export type MemoStackParamList = {
   MemoList: undefined;
   MemoDetail: { memoId: string };
-  MemoEdit: { memoId?: string; verseId?: string };
+  MemoEdit: {
+    memoId?: string;
+    verseId?: number;        // string → number (버그 수정)
+    bookId?: number;         // 책 ID
+    chapter?: number;        // 장
+    verseRange?: string;     // 다중 구절: "1-16" 또는 "1,3,5-10"
+  };
   Analytics: undefined;
   VerseHistory: { verseId: string };
 };

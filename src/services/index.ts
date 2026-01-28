@@ -19,6 +19,8 @@ export type { ShareTemplate, ShareTarget, ShareCardData, ShareResult } from './s
 export { bibleApiService } from './bibleApiService';
 export { bibleDownloadService } from './bibleDownloadService';
 export { bibleVersionService } from './bibleVersionService';
+export { bundledBibleService } from './bundledBibleService';
+export type { BundledVerse, BundledComment, ParallelVerse } from './bundledBibleService';
 
 // Backup Service
 export { backupService } from './backupService';
@@ -26,3 +28,6 @@ export { backupService } from './backupService';
 // Choco AI Service (감정분석)
 export { chocoService } from './chocoService';
 export type { HybridEmotionResult, SentimentResult, HealthCheckResult } from './chocoService';
+
+// Dictionary Service (사전)
+export { dictionaryService } from './dictionaryService';

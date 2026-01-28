@@ -26,6 +26,7 @@ import {
   getCurrentEnvironment,
   ChocoAIError,
 } from '../../services/chocoAI';
+import { resetChocoServiceCooldown } from '../../services/chocoService';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'ChocoAISettings'>;
 
@@ -49,8 +50,8 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
   // 디버그 로그 추가 함수
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
-    setDebugLogs(prev => [, ...prev.slice(0, 49)]);
-    console.log();
+    setDebugLogs(prev => [`[${timestamp}] ${message}`, ...prev.slice(0, 49)]);
+    console.log(`[ChocoAI Debug] ${message}`);
   };
 
   // 초기값 저장 (변경 감지용)
@@ -122,6 +123,8 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
       if (result.healthy) {
         setConnectionStatus('success');
         setLatency(result.latency || null);
+        // 연결 성공 시 쿨다운 리셋
+        resetChocoServiceCooldown();
       } else {
         setConnectionStatus('error');
         setConnectionError(result.error?.getUserMessage() || '연결에 실패했습니다.');
@@ -161,6 +164,8 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
         setInitialServerUrl(serverUrl);
         setInitialApiKey(apiKey);
         setHasChanges(false);
+        // 설정 저장 시 쿨다운 리셋
+        resetChocoServiceCooldown();
         Alert.alert('성공', '설정이 저장되었습니다.');
       } else {
         Alert.alert('오류', 'API Key 저장에 실패했습니다.');

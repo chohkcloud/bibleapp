@@ -56,11 +56,14 @@ export interface VerseWithMeta extends Verse {
 export interface Memo {
   memo_id: string;        // UUID
   id: string;             // memo_id 별칭 (호환성)
-  verse_id: number;       // FK → verses
+  verse_id: number;       // FK → verses (대표 구절)
   bible_id: string;       // 작성 시점 성경 버전
   book_id: number;
   chapter: number;
-  verse_num: number;
+  verse_num: number;      // 기존 호환 (시작 절)
+  verse_start?: number;   // 다중 구절: 시작 절
+  verse_end?: number;     // 다중 구절: 끝 절
+  verse_range?: string | null;  // 다중 구절: 범위 문자열 ("1-16", "1,3,5-10")
   content: string;        // 암호화된 메모 내용
   is_encrypted: number;   // 1: 암호화됨
   created_at: string;     // ISO 8601
@@ -154,6 +157,9 @@ export interface CreateMemoDto {
   book_id: number;
   chapter: number;
   verse_num: number;
+  verse_start?: number;    // 다중 구절: 시작 절
+  verse_end?: number;      // 다중 구절: 끝 절
+  verse_range?: string;    // 다중 구절: 범위 문자열
   content: string;
   tags?: number[];
 }

@@ -1,13 +1,29 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { useSettingsStore } from '../../store';
 
+const MIN_FONT_SIZE = 12;
+const MAX_FONT_SIZE = 28;
+
 export function FontSizeScreen() {
   const { colors } = useTheme();
   const { fontSize, setFontSize } = useSettingsStore();
+
+  const decreaseFont = () => {
+    if (fontSize > MIN_FONT_SIZE) {
+      setFontSize(fontSize - 1);
+    }
+  };
+
+  const increaseFont = () => {
+    if (fontSize < MAX_FONT_SIZE) {
+      setFontSize(fontSize + 1);
+    }
+  };
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
@@ -18,12 +34,37 @@ export function FontSizeScreen() {
         </Text>
       </View>
 
+      {/* +/- 버튼 */}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity
+          style={[styles.sizeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={decreaseFont}
+          disabled={fontSize <= MIN_FONT_SIZE}
+        >
+          <Ionicons name="remove" size={28} color={fontSize <= MIN_FONT_SIZE ? colors.textSecondary : colors.primary} />
+        </TouchableOpacity>
+
+        <View style={[styles.sizeDisplay, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.sizeValue, { color: colors.text }]}>{fontSize}pt</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.sizeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={increaseFont}
+          disabled={fontSize >= MAX_FONT_SIZE}
+        >
+          <Ionicons name="add" size={28} color={fontSize >= MAX_FONT_SIZE ? colors.textSecondary : colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 슬라이더 */}
       <View style={styles.sliderContainer}>
         <Text style={[styles.label, { color: colors.textSecondary }]}>작게</Text>
         <Slider
           style={styles.slider}
-          minimumValue={12}
-          maximumValue={28}
+          minimumValue={MIN_FONT_SIZE}
+          maximumValue={MAX_FONT_SIZE}
+          step={1}
           value={fontSize}
           onValueChange={(value) => setFontSize(Math.round(value))}
           minimumTrackTintColor={colors.primary}
@@ -33,8 +74,8 @@ export function FontSizeScreen() {
         <Text style={[styles.label, { color: colors.textSecondary }]}>크게</Text>
       </View>
 
-      <Text style={[styles.sizeValue, { color: colors.text }]}>
-        현재 크기: {fontSize}pt
+      <Text style={[styles.hint, { color: colors.textSecondary }]}>
+        +/- 버튼 또는 슬라이더로 조절하세요
       </Text>
       </View>
     </SafeContainer>
@@ -54,6 +95,32 @@ const styles = StyleSheet.create({
   previewText: {
     lineHeight: 32,
   },
+  buttonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  sizeButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeDisplay: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  sizeValue: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
   sliderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -66,8 +133,9 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 12,
   },
-  sizeValue: {
+  hint: {
     textAlign: 'center',
-    fontSize: 16,
+    fontSize: 13,
+    marginTop: 8,
   },
 });

@@ -15,10 +15,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { MemoStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
+import { LinkedText, VersePopup } from '../../components/memo';
 import { useSettingsStore } from '../../store';
 import { memoService, bibleService, chocoService } from '../../services';
 import type { HybridEmotionResult } from '../../services/chocoService';
 import type { Memo, Verse } from '../../types/database';
+import type { ParsedBibleRef } from '../../utils/bibleRefParser';
 
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoDetail'>;
 
@@ -33,6 +35,9 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   const [bookName, setBookName] = useState('');
   const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 성경 참조 팝업 상태
+  const [showVersePopup, setShowVersePopup] = useState(false);
+  const [selectedRef, setSelectedRef] = useState<ParsedBibleRef | null>(null);
 
   // 데이터 로드
   const loadData = useCallback(async () => {
@@ -159,6 +164,34 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     navigation.navigate('VerseHistory', { verseId: String(verse.verse_id) });
   };
 
+  // 성경 참조 클릭 핸들러
+  const handleRefPress = (ref: ParsedBibleRef) => {
+    setSelectedRef(ref);
+    setShowVersePopup(true);
+  };
+
+  // 팝업에서 구절로 이동
+  const handleGoToRefVerse = () => {
+    if (!selectedRef) return;
+    setShowVersePopup(false);
+    navigation.navigate('BibleTab' as any, {
+      screen: 'Reading',
+      params: {
+        bookId: selectedRef.bookId,
+        chapter: selectedRef.chapter,
+      },
+    });
+  };
+
+  // 구절 범위 표시 문자열 생성
+  const getVerseRangeDisplay = () => {
+    if (!memo) return '';
+    if (memo.verse_range) {
+      return `${bookName} ${memo.chapter}:${memo.verse_range}`;
+    }
+    return `${bookName} ${memo.chapter}:${memo.verse_num}`;
+  };
+
   // 날짜 포맷
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -237,7 +270,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
         >
           <Text style={styles.verseLabel}>📖 관련 구절</Text>
           <Text style={styles.verseReference}>
-            {bookName} {memo.chapter}:{memo.verse_num}
+            {getVerseRangeDisplay()}
           </Text>
           {verse && (
             <Text style={styles.verseText} numberOfLines={4}>
@@ -247,14 +280,16 @@ export function MemoDetailScreen({ route, navigation }: Props) {
           <Text style={styles.goToVerseText}>말씀 보기 →</Text>
         </TouchableOpacity>
 
-        {/* 묵상 내용 */}
+        {/* 묵상 내용 - 성경 참조 링크 지원 */}
         <View style={[styles.contentCard, { backgroundColor: colors.surface }]}>
           <Text style={[styles.contentLabel, { color: colors.textSecondary }]}>
             묵상 내용
           </Text>
-          <Text style={[styles.contentText, { color: colors.text }]}>
-            {memo.content}
-          </Text>
+          <LinkedText
+            text={memo.content}
+            style={[styles.contentText, { color: colors.text }]}
+            onRefPress={handleRefPress}
+          />
         </View>
 
         {/* 감정분석 결과 */}
@@ -494,6 +529,14 @@ export function MemoDetailScreen({ route, navigation }: Props) {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* 성경 참조 팝업 */}
+      <VersePopup
+        visible={showVersePopup}
+        reference={selectedRef}
+        onClose={() => setShowVersePopup(false)}
+        onGoToVerse={handleGoToRefVerse}
+      />
     </SafeContainer>
   );
 }

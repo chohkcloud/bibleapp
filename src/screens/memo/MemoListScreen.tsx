@@ -116,6 +116,15 @@ export function MemoListScreen({ navigation }: Props) {
     return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
   };
 
+  // 구절 범위 표시 문자열 생성
+  const getVerseDisplay = (item: Memo): string => {
+    const bookName = bookNames[item.book_id] || `${item.book_id}권`;
+    if (item.verse_range) {
+      return `${bookName} ${item.chapter}:${item.verse_range}`;
+    }
+    return `${bookName} ${item.chapter}:${item.verse_num}`;
+  };
+
   // 메모 렌더링
   const renderMemo = ({ item }: { item: Memo }) => (
     <TouchableOpacity
@@ -125,7 +134,7 @@ export function MemoListScreen({ navigation }: Props) {
     >
       <View style={styles.memoHeader}>
         <Text style={[styles.memoReference, { color: colors.primary }]}>
-          {bookNames[item.book_id] || `${item.book_id}권`} {item.chapter}:{item.verse_num}
+          {getVerseDisplay(item)}
         </Text>
         <Text style={[styles.memoDate, { color: colors.textSecondary }]}>
           {formatDate(item.created_at)}

@@ -2,19 +2,15 @@
 // DatabaseService 클래스 - SQLite 데이터베이스 관리
 
 import { Platform } from 'react-native';
+import type { SQLiteDatabase } from 'expo-sqlite';
 
-// JSON 성경 데이터 import
-import otPart1 from '../../data/bible/ot_part1.json';
-import otPart2 from '../../data/bible/ot_part2.json';
-import ntData from '../../data/bible/nt.json';
-
-// 전체 성경 데이터 (31,102절)
-const allBibleVerses = [...otPart1, ...otPart2, ...ntData] as Array<{
+// 성경 구절 타입 정의
+type BibleVerse = {
   bookId: number;
   chapter: number;
   verse: number;
   text: string;
-}>;
+};
 
 // 웹 플랫폼 여부
 const isWeb = Platform.OS === 'web';
@@ -24,8 +20,8 @@ const isWeb = Platform.OS === 'web';
 const FORCE_DB_RECREATE = false;
 
 class DatabaseService {
-  private bibleDb: any = null;
-  private userDb: any = null;
+  private bibleDb: SQLiteDatabase | null = null;
+  private userDb: SQLiteDatabase | null = null;
   private isInitialized: boolean = false;
 
   async initialize(): Promise<void> {
@@ -362,15 +358,41 @@ class DatabaseService {
   }
 
   // JSON 파일에서 전체 성경 구절 삽입 (31,102절)
+  // 동적 import로 메모리 효율성 개선
   private async insertVersesFromData(): Promise<void> {
-    if (!this.bibleDb || !allBibleVerses || allBibleVerses.length === 0) return;
+    if (!this.bibleDb) return;
 
-    console.log(`[DatabaseService] ${allBibleVerses.length}절 삽입 시작...`);
-    const batchSize = 100; // 배치 크기 증가
+    console.log('[DatabaseService] 성경 데이터 동적 로드 시작...');
+
+    // 동적 import로 필요할 때만 데이터 로드
+    const [otPart1Module, otPart2Module, ntModule] = await Promise.all([
+      import('../../data/bible/ot_part1.json'),
+      import('../../data/bible/ot_part2.json'),
+      import('../../data/bible/nt.json'),
+    ]);
+
+    const otPart1 = otPart1Module.default as BibleVerse[];
+    const otPart2 = otPart2Module.default as BibleVerse[];
+    const ntData = ntModule.default as BibleVerse[];
+
+    // 파트별로 순차 처리 (메모리 효율성)
+    await this.insertVerseBatch(otPart1, '구약 1부');
+    await this.insertVerseBatch(otPart2, '구약 2부');
+    await this.insertVerseBatch(ntData, '신약');
+
+    console.log('[DatabaseService] 전체 성경 데이터 삽입 완료');
+  }
+
+  // 배치 단위로 구절 삽입
+  private async insertVerseBatch(verses: BibleVerse[], label: string): Promise<void> {
+    if (!this.bibleDb || !verses || verses.length === 0) return;
+
+    console.log(`[DatabaseService] ${label} ${verses.length}절 삽입 시작...`);
+    const batchSize = 50;
     let inserted = 0;
 
-    for (let i = 0; i < allBibleVerses.length; i += batchSize) {
-      const batch = allBibleVerses.slice(i, i + batchSize);
+    for (let i = 0; i < verses.length; i += batchSize) {
+      const batch = verses.slice(i, i + batchSize);
       const values = batch.map(v =>
         `('KRV', ${v.bookId}, ${v.chapter}, ${v.verse}, '${v.text.replace(/'/g, "''")}')`
       ).join(',');
@@ -380,7 +402,7 @@ class DatabaseService {
       `);
       inserted += batch.length;
     }
-    console.log(`[DatabaseService] ${inserted}절 삽입 완료`);
+    console.log(`[DatabaseService] ${label} ${inserted}절 삽입 완료`);
   }
 
   private async initUserDb(): Promise<void> {
@@ -436,13 +458,28 @@ class DatabaseService {
     `);
   }
 
-  getBibleDb(): any {
+  getBibleDb(): SQLiteDatabase | null {
     if (isWeb) return null;
     return this.bibleDb;
   }
 
-  getUserDb(): any {
+  getUserDb(): SQLiteDatabase | null {
     if (isWeb) return null;
+    return this.userDb;
+  }
+
+  // null이 아닌 DB 반환 (웹이 아닌 환경에서 사용)
+  requireBibleDb(): SQLiteDatabase {
+    if (!this.bibleDb) {
+      throw new Error('Bible database not initialized');
+    }
+    return this.bibleDb;
+  }
+
+  requireUserDb(): SQLiteDatabase {
+    if (!this.userDb) {
+      throw new Error('User database not initialized');
+    }
     return this.userDb;
   }
 

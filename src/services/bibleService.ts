@@ -16,6 +16,7 @@ import {
   getVerseById,
   searchVerses,
   searchVersesSimple,
+  getSearchCount,
   getBookChapterCount,
   getChapterVerseCount,
 } from './database/bibleQueries';
@@ -259,6 +260,26 @@ class BibleService {
         '검색에 실패했습니다.',
         error as Error
       );
+    }
+  }
+
+  /**
+   * 검색 결과 전체 개수 조회 (페이징용)
+   */
+  async getSearchCount(
+    bibleId: string,
+    query: string,
+    langId: string,
+    bookId?: number
+  ): Promise<number> {
+    try {
+      if (!query || query.trim().length === 0) {
+        return 0;
+      }
+      return await getSearchCount(bibleId, query.trim(), langId, bookId);
+    } catch (error) {
+      console.error('Search count error:', error);
+      return 0;
     }
   }
 

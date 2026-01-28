@@ -205,6 +205,96 @@ export async function hashPassword(password: string): Promise<string> {
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## 메모리 최적화 전략 (v2.0)
+
+### 문제점
+- 성경 데이터 11개 버전 × 31,102절 = 약 342,000개 이상의 데이터
+- 앱 시작 시 모든 데이터를 정적 import하면 Out of Memory 발생
+- 특히 저사양 기기나 에뮬레이터에서 크래시 문제 발생
+
+### 해결책: 동적 로딩 (Lazy Loading)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    메모리 최적화 아키텍처                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   기존 방식 (문제):                                          │
+│   ┌─────────────────┐                                       │
+│   │ import hcv.json │ ───▶ 앱 시작 시 모든 데이터 메모리 로드│
+│   │ import kjv.json │      (342,000+ 객체 = OOM 위험)       │
+│   │ import niv.json │                                       │
+│   │ ... (11개 버전) │                                       │
+│   └─────────────────┘                                       │
+│                                                             │
+│   개선된 방식 (동적 로딩):                                    │
+│   ┌─────────────────┐      ┌─────────────────┐             │
+│   │ loadedBibles    │      │ 필요할 때만     │             │
+│   │ Map<string,     │ ◀─── │ require() 호출  │             │
+│   │     BundledVerse│      │ (Lazy Loading)  │             │
+│   │ []>             │      └─────────────────┘             │
+│   └─────────────────┘                                       │
+│           │                                                 │
+│           ▼                                                 │
+│   ┌─────────────────┐      ┌─────────────────┐             │
+│   │ unloadVersion() │ ───▶ │ 사용하지 않는   │             │
+│   │ clearCache()    │      │ 버전 메모리 해제│             │
+│   └─────────────────┘      └─────────────────┘             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 구현 상세
+
+```typescript
+// src/services/bundledBibleService.ts
+
+// 동적 로딩 캐시
+const loadedBibles: Map<string, BundledVerse[]> = new Map();
+const versionIndexCache: Map<string, VerseIndex> = new Map();
+
+// 필요할 때만 로드
+function loadBibleVersionSync(versionId: string): BundledVerse[] {
+  if (loadedBibles.has(versionId)) return loadedBibles.get(versionId)!;
+
+  // 동적 require - 해당 버전이 필요할 때만 메모리에 로드
+  switch (versionId) {
+    case 'HCV': data = require('../data/versions/bundled/hcv.json'); break;
+    case 'KJV': data = require('../data/versions/bundled/kjv.json'); break;
+    // ... 기타 버전
+  }
+
+  loadedBibles.set(versionId, data);
+  return data;
+}
+
+// 메모리 해제 메서드
+unloadVersion(versionId: string): void {
+  loadedBibles.delete(versionId);
+  versionIndexCache.delete(versionId);
+}
+
+clearCache(): void {
+  loadedBibles.clear();
+  versionIndexCache.clear();
+}
+```
+
+### 메모리 사용량 비교
+
+| 방식 | 앱 시작 시 메모리 | 1개 버전 조회 시 | 모든 버전 조회 시 |
+|------|-------------------|------------------|-------------------|
+| 정적 import | ~150MB+ (OOM) | ~150MB+ | ~150MB+ |
+| 동적 로딩 | ~10MB | ~25MB | ~150MB (점진적) |
+
+### 권장 사용 패턴
+
+1. **화면 전환 시**: 이전 버전 언로드
+2. **메모리 경고 시**: `clearCache()` 호출
+3. **비교 성경**: 최대 2-3개 버전만 동시 로드
+
+---
+
 ## 에러 처리 전략
 
 ```typescript

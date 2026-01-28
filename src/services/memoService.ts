@@ -52,6 +52,9 @@ interface CreateMemoInput {
   bookId: number;
   chapter: number;
   verseNum: number;
+  verseStart?: number;    // 범위 선택 시 시작 절
+  verseEnd?: number;      // 범위 선택 시 끝 절
+  verseRange?: string;    // 범위 문자열 (예: "1-16")
   content: string;
   tagIds?: number[];
   tags?: string;
@@ -97,6 +100,9 @@ class MemoService {
         book_id: input.bookId,
         chapter: input.chapter,
         verse_num: input.verseNum,
+        verse_start: input.verseStart,
+        verse_end: input.verseEnd,
+        verse_range: input.verseRange,
         content: encryptedContent,
         tags: input.tagIds,
       };
