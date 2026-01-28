@@ -51,11 +51,15 @@ export function SearchScreen({ navigation }: Props) {
   // 탭 관련 상태 (성경 / 사전)
   const [activeTab, setActiveTab] = useState<'bible' | 'dictionary'>('bible');
   const [dictResults, setDictResults] = useState<DictEntry[]>([]);
-  const [allDictResults, setAllDictResults] = useState<DictEntry[]>([]);
   const [strongResults, setStrongResults] = useState<StrongEntry[]>([]);
-  const [allStrongResults, setAllStrongResults] = useState<StrongEntry[]>([]);
   const [dictPage, setDictPage] = useState(0);
+  const [strongPage, setStrongPage] = useState(0);
   const DICT_PAGE_SIZE = 30;
+
+  // 사전 전체 개수
+  const [totalDictCount, setTotalDictCount] = useState(0);
+  const [totalStrongCount, setTotalStrongCount] = useState(0);
+  const [isDictLoadingMore, setIsDictLoadingMore] = useState(false);
 
   // 사전 상세보기 모달 상태
   const [selectedDictEntry, setSelectedDictEntry] = useState<DictEntry | null>(null);
@@ -155,18 +159,24 @@ export function SearchScreen({ navigation }: Props) {
 
       setResults(resultsWithBookName);
 
-      // 사전 검색도 동시에 실행 (전체 결과 저장)
-      const [dicResults, strongHResults, strongGResults] = await Promise.all([
-        dictionaryService.searchBibleDictionary(trimmedQuery),
-        dictionaryService.searchStrong(trimmedQuery, 'H'),
-        dictionaryService.searchStrong(trimmedQuery, 'G'),
+      // 사전 검색 - 전체 개수 먼저 조회
+      const [dictCount, strongHCount, strongGCount] = await Promise.all([
+        dictionaryService.getDictSearchCount(trimmedQuery),
+        dictionaryService.getStrongSearchCount(trimmedQuery, 'H'),
+        dictionaryService.getStrongSearchCount(trimmedQuery, 'G'),
       ]);
 
-      const allStrong = [...strongHResults, ...strongGResults];
-      setAllDictResults(dicResults);
-      setAllStrongResults(allStrong);
-      setDictResults(dicResults.slice(0, DICT_PAGE_SIZE));
-      setStrongResults(allStrong.slice(0, DICT_PAGE_SIZE));
+      setTotalDictCount(dictCount);
+      setTotalStrongCount(strongHCount + strongGCount);
+
+      // 사전 첫 페이지 로드
+      const [dicResults, strongResults] = await Promise.all([
+        dictionaryService.searchBibleDictionary(trimmedQuery, DICT_PAGE_SIZE, 0),
+        dictionaryService.searchStrong(trimmedQuery, undefined, DICT_PAGE_SIZE, 0),
+      ]);
+
+      setDictResults(dicResults);
+      setStrongResults(strongResults);
 
       // 최근 검색어 저장
       saveRecentSearch(trimmedQuery);
@@ -176,8 +186,8 @@ export function SearchScreen({ navigation }: Props) {
       setTotalBibleCount(0);
       setDictResults([]);
       setStrongResults([]);
-      setAllDictResults([]);
-      setAllStrongResults([]);
+      setTotalDictCount(0);
+      setTotalStrongCount(0);
     } finally {
       setIsSearching(false);
     }
@@ -216,13 +226,48 @@ export function SearchScreen({ navigation }: Props) {
   };
 
   // 사전 검색 더 보기
-  const loadMoreDictResults = () => {
-    const nextPage = dictPage + 1;
-    const start = nextPage * DICT_PAGE_SIZE;
+  const loadMoreDictResults = async () => {
+    if (isDictLoadingMore) return;
 
-    setDictResults(allDictResults.slice(0, start + DICT_PAGE_SIZE));
-    setStrongResults(allStrongResults.slice(0, start + DICT_PAGE_SIZE));
-    setDictPage(nextPage);
+    const hasMoreDict = dictResults.length < totalDictCount;
+    const hasMoreStrong = strongResults.length < totalStrongCount;
+
+    if (!hasMoreDict && !hasMoreStrong) return;
+
+    setIsDictLoadingMore(true);
+
+    try {
+      const trimmedQuery = query.trim();
+
+      // 성경 사전 더 로드
+      if (hasMoreDict) {
+        const nextDictPage = dictPage + 1;
+        const moreDictResults = await dictionaryService.searchBibleDictionary(
+          trimmedQuery,
+          DICT_PAGE_SIZE,
+          nextDictPage * DICT_PAGE_SIZE
+        );
+        setDictResults(prev => [...prev, ...moreDictResults]);
+        setDictPage(nextDictPage);
+      }
+
+      // Strong's 사전 더 로드
+      if (hasMoreStrong) {
+        const nextStrongPage = strongPage + 1;
+        const moreStrongResults = await dictionaryService.searchStrong(
+          trimmedQuery,
+          undefined,
+          DICT_PAGE_SIZE,
+          nextStrongPage * DICT_PAGE_SIZE
+        );
+        setStrongResults(prev => [...prev, ...moreStrongResults]);
+        setStrongPage(nextStrongPage);
+      }
+    } catch (error) {
+      console.error('Load more dict error:', error);
+    } finally {
+      setIsDictLoadingMore(false);
+    }
   };
 
   // 최근 검색어 저장
@@ -350,7 +395,7 @@ export function SearchScreen({ navigation }: Props) {
               styles.tabText,
               { color: activeTab === 'bible' ? colors.primary : colors.textSecondary }
             ]}>
-              📖 성경 {hasSearched && totalBibleCount > 0 && `(${totalBibleCount.toLocaleString()})`}
+              📖 성경 {hasSearched && totalBibleCount > 0 && `(${totalBibleCount.toLocaleString()}건)`}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -364,7 +409,7 @@ export function SearchScreen({ navigation }: Props) {
               styles.tabText,
               { color: activeTab === 'dictionary' ? colors.primary : colors.textSecondary }
             ]}>
-              📚 사전 {hasSearched && (allDictResults.length + allStrongResults.length) > 0 && `(${(allDictResults.length + allStrongResults.length).toLocaleString()})`}
+              📚 사전 {hasSearched && (totalDictCount + totalStrongCount) > 0 && `(${(totalDictCount + totalStrongCount).toLocaleString()}건)`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -408,8 +453,8 @@ export function SearchScreen({ navigation }: Props) {
           <>
             <View style={styles.resultHeader}>
               <Text style={[styles.resultCount, { color: colors.textSecondary }]}>
-                {results.length > 0
-                  ? `${results.length}개의 결과${selectedBookId ? ` (${selectedBookName})` : ''}`
+                {totalBibleCount > 0
+                  ? `전체 ${totalBibleCount.toLocaleString()}건 중 ${results.length.toLocaleString()}건 표시${selectedBookId ? ` (${selectedBookName})` : ''}`
                   : '검색 결과가 없습니다'}
               </Text>
             </View>
@@ -456,11 +501,18 @@ export function SearchScreen({ navigation }: Props) {
         {/* 검색 결과 - 사전 탭 */}
         {!isSearching && hasSearched && activeTab === 'dictionary' && (
           <ScrollView style={styles.dictResultsContainer} showsVerticalScrollIndicator={false}>
+            {/* 전체 결과 요약 */}
+            <View style={styles.dictSummary}>
+              <Text style={[styles.dictSummaryText, { color: colors.textSecondary }]}>
+                전체 {(totalDictCount + totalStrongCount).toLocaleString()}건 (Strong's {totalStrongCount.toLocaleString()}건, 성경사전 {totalDictCount.toLocaleString()}건)
+              </Text>
+            </View>
+
             {/* Strong's 사전 결과 */}
             {strongResults.length > 0 && (
               <View style={styles.dictSection}>
                 <Text style={[styles.dictSectionTitle, { color: colors.text }]}>
-                  📜 Strong's 원어 사전
+                  📜 Strong's 원어 사전 ({strongResults.length}/{totalStrongCount.toLocaleString()}건)
                 </Text>
                 {strongResults.map((entry, index) => (
                   <TouchableOpacity
@@ -493,7 +545,7 @@ export function SearchScreen({ navigation }: Props) {
             {dictResults.length > 0 && (
               <View style={styles.dictSection}>
                 <Text style={[styles.dictSectionTitle, { color: colors.text }]}>
-                  📕 성경 사전
+                  📕 성경 사전 ({dictResults.length}/{totalDictCount.toLocaleString()}건)
                 </Text>
                 {dictResults.map((entry, index) => (
                   <TouchableOpacity
@@ -522,14 +574,19 @@ export function SearchScreen({ navigation }: Props) {
             )}
 
             {/* 사전 더 보기 버튼 */}
-            {(dictResults.length < allDictResults.length || strongResults.length < allStrongResults.length) && (
+            {(dictResults.length < totalDictCount || strongResults.length < totalStrongCount) && (
               <TouchableOpacity
                 style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 16 }]}
                 onPress={loadMoreDictResults}
+                disabled={isDictLoadingMore}
               >
-                <Text style={[styles.loadMoreText, { color: colors.primary }]}>
-                  더 보기 ({dictResults.length + strongResults.length} / {(allDictResults.length + allStrongResults.length).toLocaleString()})
-                </Text>
+                {isDictLoadingMore ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Text style={[styles.loadMoreText, { color: colors.primary }]}>
+                    더 보기 ({(dictResults.length + strongResults.length).toLocaleString()} / {(totalDictCount + totalStrongCount).toLocaleString()}건)
+                  </Text>
+                )}
               </TouchableOpacity>
             )}
 
@@ -1051,8 +1108,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
   },
+  dictSummary: {
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  dictSummaryText: {
+    fontSize: 13,
+  },
   dictSection: {
-    marginTop: 16,
+    marginTop: 8,
   },
   dictSectionTitle: {
     fontSize: 16,

@@ -185,8 +185,12 @@ class DictionaryService {
 
   /**
    * Strong's 검색 (원어, 음역, 의미로 검색)
+   * @param query - 검색어
+   * @param lang - 언어 ('H': 히브리어, 'G': 헬라어)
+   * @param limit - 최대 결과 수 (0이면 제한 없음, 기본값 0)
+   * @param offset - 시작 위치 (기본값 0)
    */
-  async searchStrong(query: string, lang?: 'H' | 'G'): Promise<StrongEntry[]> {
+  async searchStrong(query: string, lang?: 'H' | 'G', limit: number = 0, offset: number = 0): Promise<StrongEntry[]> {
     const lowerQuery = query.toLowerCase();
     const results: StrongEntry[] = [];
 
@@ -202,7 +206,6 @@ class DictionaryService {
           entry.meaningKo.includes(query)
         ) {
           results.push(entry);
-          if (results.length >= 50) break;
         }
       }
     };
@@ -212,12 +215,24 @@ class DictionaryService {
       await searchInData(hData);
     }
 
-    if ((!lang || lang === 'G') && results.length < 50) {
+    if (!lang || lang === 'G') {
       const gData = await loadGstrong();
       await searchInData(gData);
     }
 
-    return results.slice(0, 50);
+    // 페이징 적용
+    if (limit > 0) {
+      return results.slice(offset, offset + limit);
+    }
+    return results;
+  }
+
+  /**
+   * Strong's 검색 결과 개수 조회
+   */
+  async getStrongSearchCount(query: string, lang?: 'H' | 'G'): Promise<number> {
+    const results = await this.searchStrong(query, lang, 0, 0);
+    return results.length;
   }
 
   /**
@@ -230,8 +245,11 @@ class DictionaryService {
 
   /**
    * 성경 사전 검색
+   * @param query - 검색어
+   * @param limit - 최대 결과 수 (0이면 제한 없음, 기본값 0)
+   * @param offset - 시작 위치 (기본값 0)
    */
-  async searchBibleDictionary(query: string): Promise<DictEntry[]> {
+  async searchBibleDictionary(query: string, limit: number = 0, offset: number = 0): Promise<DictEntry[]> {
     const data = await loadBibleDic();
     const lowerQuery = query.toLowerCase();
     const results: DictEntry[] = [];
@@ -244,11 +262,22 @@ class DictionaryService {
         entry.definition.includes(query)
       ) {
         results.push(entry);
-        if (results.length >= 50) break;
       }
     }
 
+    // 페이징 적용
+    if (limit > 0) {
+      return results.slice(offset, offset + limit);
+    }
     return results;
+  }
+
+  /**
+   * 성경 사전 검색 결과 개수 조회
+   */
+  async getDictSearchCount(query: string): Promise<number> {
+    const results = await this.searchBibleDictionary(query, 0, 0);
+    return results.length;
   }
 
   /**
