@@ -20,7 +20,8 @@ import { useTheme } from '../../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '../../store';
 import { memoService, bibleService, chocoService } from '../../services';
-import type { HybridEmotionResult } from '../../services/chocoService';
+import { bundledBibleService } from '../../services/bundledBibleService';
+import type { HybridEmotionResult, AnalyzeResult } from '../../services/chocoService';
 import type { Verse, Memo } from '../../types/database';
 
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoEdit'>;
@@ -43,6 +44,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
   const [existingMemo, setExistingMemo] = useState<Memo | null>(null);
   const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isVerseExpanded, setIsVerseExpanded] = useState(false);
   const [focusedInput, setFocusedInput] = useState<'content' | 'tag' | null>(null);
@@ -86,6 +88,27 @@ export function MemoEditScreen({ route, navigation }: Props) {
     }
   }, []);
 
+  // 수동 감정분석 (쿨다운 무시, 피드백 표시 - BUG-A fix)
+  const handleManualAnalyze = useCallback(async () => {
+    if (isAnalyzing) return;
+    setAnalyzeError(null);
+    setIsAnalyzing(true);
+    try {
+      const result: AnalyzeResult = await chocoService.forceAnalyzeHybridEmotion(content);
+      if (result.data) {
+        setEmotionResult(result.data);
+        setAnalyzeError(null);
+      } else {
+        setEmotionResult(null);
+        setAnalyzeError(result.error);
+      }
+    } catch (error: any) {
+      setAnalyzeError(error?.message || '분석 실패');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [content, isAnalyzing]);
+
   // 내용 변경 시 디바운스된 감정분석 실행
   useEffect(() => {
     if (analyzeTimeoutRef.current) {
@@ -108,9 +131,42 @@ export function MemoEditScreen({ route, navigation }: Props) {
     loadData();
   }, [memoId, verseId]);
 
+  // 번들/DB 구분하여 구절 로드하는 헬퍼
+  const getVerseFromAnySource = (version: string, bookId: number, chap: number, verseNum: number): Verse | null => {
+    if (bundledBibleService.isBundled(version)) {
+      const bv = bundledBibleService.getVerse(version, bookId, chap, verseNum);
+      if (!bv) return null;
+      return {
+        verse_id: bv.bookId * 1000000 + bv.chapter * 1000 + bv.verse,
+        bible_id: version,
+        book_id: bv.bookId,
+        chapter: bv.chapter,
+        verse_num: bv.verse,
+        text: bv.text,
+      };
+    }
+    return null; // DB 조회는 async이므로 별도 처리
+  };
+
+  const getVerseAsync = async (version: string, bookId: number, chap: number, verseNum: number): Promise<Verse | null> => {
+    const bundled = getVerseFromAnySource(version, bookId, chap, verseNum);
+    if (bundled) return bundled;
+    return await bibleService.getVerse(version, bookId, chap, verseNum);
+  };
+
   const loadData = async () => {
     try {
       setIsLoading(true);
+
+      // 상태 초기화 (이전 데이터 잔존 방지 - BUG-C fix)
+      setContent('');
+      setTags('');
+      setExistingMemo(null);
+      setEmotionResult(null);
+      setAnalyzeError(null);
+      setVerse(null);
+      setVerses([]);
+      setVerseRangeDisplay('');
 
       const books = await bibleService.getBooks(language);
       const bookMap: Record<number, string> = {};
@@ -131,7 +187,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
           if (memo.verse_range) {
             setVerseRangeDisplay(memo.verse_range);
             // 첫 번째 구절만 대표로 로드
-            const verseData = await bibleService.getVerse(
+            const verseData = await getVerseAsync(
               bibleVersion,
               memo.book_id,
               memo.chapter,
@@ -140,7 +196,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
             setVerse(verseData);
           } else {
             setVerseRangeDisplay(`${memo.verse_num}`);
-            const verseData = await bibleService.getVerse(
+            const verseData = await getVerseAsync(
               bibleVersion,
               memo.book_id,
               memo.chapter,
@@ -158,7 +214,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
         const verseNums = parseVerseRangeSimple(verseRange);
         const loadedVerses: Verse[] = [];
         for (const vNum of verseNums.slice(0, 5)) { // 최대 5개만 로드 (성능)
-          const v = await bibleService.getVerse(bibleVersion, paramBookId, paramChapter, vNum);
+          const v = await getVerseAsync(bibleVersion, paramBookId, paramChapter, vNum);
           if (v) loadedVerses.push(v);
         }
         setVerses(loadedVerses);
@@ -167,11 +223,25 @@ export function MemoEditScreen({ route, navigation }: Props) {
         }
       } else if (verseId) {
         // 단일 구절 묵상 작성 모드
-        const verseData = await bibleService.getVerseById(verseId); // parseInt 제거
-        if (verseData) {
-          setVerse(verseData);
-          setBookName(bookMap[verseData.book_id] || `${verseData.book_id}권`);
-          setVerseRangeDisplay(`${verseData.verse_num}`);
+        // 번들 버전일 경우 verseId에서 bookId, chapter, verseNum 역산
+        if (bundledBibleService.isBundled(bibleVersion)) {
+          const vid = typeof verseId === 'number' ? verseId : parseInt(String(verseId), 10);
+          const bkId = Math.floor(vid / 1000000);
+          const chap = Math.floor((vid % 1000000) / 1000);
+          const vNum = vid % 1000;
+          const verseData = getVerseFromAnySource(bibleVersion, bkId, chap, vNum);
+          if (verseData) {
+            setVerse(verseData);
+            setBookName(bookMap[verseData.book_id] || `${verseData.book_id}권`);
+            setVerseRangeDisplay(`${verseData.verse_num}`);
+          }
+        } else {
+          const verseData = await bibleService.getVerseById(verseId);
+          if (verseData) {
+            setVerse(verseData);
+            setBookName(bookMap[verseData.book_id] || `${verseData.book_id}권`);
+            setVerseRangeDisplay(`${verseData.verse_num}`);
+          }
         }
       }
     } catch (error) {
@@ -225,7 +295,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
         const verseStart = Math.min(...verseNums);
         const verseEnd = Math.max(...verseNums);
 
-        await memoService.createMemo({
+        const newMemoId = await memoService.createMemo({
           verseId: verse.verse_id,
           bibleId: bibleVersion,
           bookId: paramBookId || verse.book_id,
@@ -237,6 +307,9 @@ export function MemoEditScreen({ route, navigation }: Props) {
           content: content.trim(),
           tags: tags.trim() || undefined,
         });
+
+        // 중복 생성 방지: 저장 후 existingMemo 설정 (BUG-C fix)
+        setExistingMemo({ memo_id: newMemoId } as Memo);
       }
 
       navigation.goBack();
@@ -394,15 +467,27 @@ export function MemoEditScreen({ route, navigation }: Props) {
         {/* 감정분석 & 팁 - 키보드 없을 때만 */}
         {!isKeyboardVisible && (
           <View style={styles.bottomInfo}>
-            {(emotionResult || isAnalyzing || content.trim().length >= 20) && (
+            {(emotionResult || isAnalyzing || analyzeError || content.trim().length >= 20) && (
               <View style={[styles.emotionCard, { backgroundColor: colors.surface }]}>
                 <View style={styles.emotionHeader}>
                   <Text style={styles.emotionIcon}>🤖</Text>
                   <Text style={[styles.emotionLabel, { color: colors.text }]}>AI 감정분석</Text>
                   {isAnalyzing && <ActivityIndicator size="small" color={colors.primary} />}
+                  {!isAnalyzing && (
+                    <TouchableOpacity
+                      style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
+                      onPress={handleManualAnalyze}
+                      disabled={content.trim().length < 20}
+                    >
+                      <Ionicons name="refresh" size={12} color="#fff" />
+                      <Text style={styles.analyzeButtonText}>분석</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
                 {isAnalyzing ? (
-                  <Text style={[styles.emotionStatus, { color: colors.textSecondary }]}>분석 중...</Text>
+                  <Text style={[styles.emotionStatus, { color: colors.textSecondary }]}>서버 연결 및 분석 중...</Text>
+                ) : analyzeError ? (
+                  <Text style={[styles.emotionStatus, { color: '#E74C3C' }]}>{analyzeError}</Text>
                 ) : emotionResult ? (
                   <View style={styles.emotionResult}>
                     <Text style={styles.emotionMainIcon}>
@@ -418,7 +503,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
                     </View>
                   </View>
                 ) : (
-                  <Text style={[styles.emotionStatus, { color: colors.textSecondary }]}>입력을 멈추면 분석됩니다</Text>
+                  <Text style={[styles.emotionStatus, { color: colors.textSecondary }]}>분석 버튼을 눌러 감정을 분석하세요</Text>
                 )}
               </View>
             )}
@@ -549,6 +634,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+  },
+  analyzeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 3,
+  },
+  analyzeButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
   emotionStatus: {
     fontSize: 11,

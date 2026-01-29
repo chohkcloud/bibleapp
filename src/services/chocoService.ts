@@ -37,6 +37,11 @@ export interface HealthCheckResult {
 
 interface ApiError { detail: string; }
 
+export interface AnalyzeResult {
+  data: HybridEmotionResult | null;
+  error: string | null;
+}
+
 const getBaseUrl = (): string => getActiveServerUrl();
 const API_TIMEOUT = 30000;
 
@@ -120,6 +125,54 @@ class ChocoService {
         context: { kpoem: r.rag_context?.kpoem_matches || 0, kote: r.rag_context?.kote_matches || 0, kosac: r.rag_context?.kosac_matches || 0 },
         confidence: r.confidence || 0.8 };
     } catch { return null; }
+  }
+
+  /**
+   * 쿨다운 무시하고 강제 분석 (수동 버튼용) - 실패 사유 포함 반환
+   */
+  async forceAnalyzeHybridEmotion(text: string): Promise<AnalyzeResult> {
+    if (!text || text.trim().length === 0) return { data: null, error: '분석할 텍스트가 없습니다.' };
+    if (text.trim().length < 20) return { data: null, error: '20자 이상 입력해주세요.' };
+
+    // 쿨다운 리셋 후 재시도
+    this.resetCooldown();
+    await this.ensureInitialized();
+
+    try {
+      const healthResult = await this.checkHealth();
+      if (!healthResult || !this.isAvailable) {
+        const url = this.baseUrl;
+        return { data: null, error: `서버 연결 실패 (${url}/api/health)` };
+      }
+
+      const apiKey = await getApiKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
+
+      const response = await fetchWithTimeout(
+        this.baseUrl + '/api/sentiment/hybrid',
+        { method: 'POST', headers, body: JSON.stringify({ text }) }
+      );
+
+      if (!response.ok) {
+        const status = response.status;
+        let detail = '';
+        try { const body = await response.json(); detail = (body as ApiError).detail || ''; } catch {}
+        return { data: null, error: `API 오류 (${status})${detail ? ': ' + detail : ''}` };
+      }
+
+      const r: HybridEmotionApiResponse = await response.json();
+      const result: HybridEmotionResult = {
+        main_emotion: r.main_emotion, emotions: r.emotions || [], tone: r.tone || '', key_phrases: r.key_phrases || [],
+        context: { kpoem: r.rag_context?.kpoem_matches || 0, kote: r.rag_context?.kote_matches || 0, kosac: r.rag_context?.kosac_matches || 0 },
+        confidence: r.confidence || 0.8,
+      };
+      return { data: result, error: null };
+    } catch (e: any) {
+      const msg = e?.message || '알 수 없는 오류';
+      if (msg.includes('aborted')) return { data: null, error: '서버 응답 시간 초과 (30초)' };
+      return { data: null, error: `네트워크 오류: ${msg}` };
+    }
   }
 
   async analyzeSentiment(text: string): Promise<SentimentResult | null> {

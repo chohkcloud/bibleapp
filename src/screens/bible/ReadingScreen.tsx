@@ -222,10 +222,16 @@ export function ReadingScreen({ route, navigation }: Props) {
       );
       setSelectedRange(rangeVerses);
     } else {
-      // 새로운 선택 시작
-      setRangeStart(verse.verse_num);
-      setRangeEnd(null);
-      setSelectedRange([verse]);
+      // 범위 확장: 새 구절을 포함하도록 start/end 조정 (BUG-B fix)
+      const newStart = Math.min(rangeStart, verse.verse_num);
+      const newEnd = Math.max(rangeEnd, verse.verse_num);
+      setRangeStart(newStart);
+      setRangeEnd(newEnd);
+
+      const rangeVerses = verses.filter(
+        v => v.verse_num >= newStart && v.verse_num <= newEnd
+      );
+      setSelectedRange(rangeVerses);
     }
   };
 
