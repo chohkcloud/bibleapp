@@ -49,3 +49,6 @@ nul
 
 # Test builds
 dist-test/
+
+# Pre-built database (copyright-sensitive)
+assets/bible.db

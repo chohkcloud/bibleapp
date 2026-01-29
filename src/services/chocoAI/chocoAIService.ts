@@ -657,7 +657,7 @@ export const checkServerHealth = async (): Promise<{
 
   try {
     const response = await fetchWithTimeout(
-      `${config.serverUrl}/health`,
+      `${config.serverUrl}/api/health`,
       {
         method: 'GET',
         headers: config.apiKey ? createHeaders(config.apiKey) : {},

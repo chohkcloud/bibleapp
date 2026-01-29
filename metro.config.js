@@ -3,6 +3,9 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
+// .db 파일을 asset으로 포함
+config.resolver.assetExts.push('db');
+
 // 웹에서 네이티브 모듈 무시
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (platform === 'web') {

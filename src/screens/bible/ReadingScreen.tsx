@@ -113,8 +113,23 @@ export function ReadingScreen({ route, navigation }: Props) {
       const chapters = await bibleService.getTotalChapters(bookId);
       setTotalChapters(chapters);
 
-      // 구절 로드
-      const chapterVerses = await bibleService.getChapterSimple(bibleVersion, bookId, chapter);
+      // 구절 로드 - 번들 버전과 DB 버전 분기
+      let chapterVerses: Verse[];
+      if (bundledBibleService.isBundled(bibleVersion)) {
+        // 번들 버전: JSON에서 로드 후 Verse 타입으로 변환
+        const bundledVerses = bundledBibleService.getChapterVerses(bibleVersion, bookId, chapter);
+        chapterVerses = bundledVerses.map((bv) => ({
+          verse_id: bv.bookId * 1000000 + bv.chapter * 1000 + bv.verse, // 고유 ID 생성
+          bible_id: bibleVersion,
+          book_id: bv.bookId,
+          chapter: bv.chapter,
+          verse_num: bv.verse,
+          text: bv.text,
+        }));
+      } else {
+        // DB 버전: 기존 방식
+        chapterVerses = await bibleService.getChapterSimple(bibleVersion, bookId, chapter);
+      }
 
       // 하이라이트 로드
       const highlights = await memoService.getHighlightsByChapter(bibleVersion, bookId, chapter);

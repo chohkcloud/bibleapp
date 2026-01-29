@@ -74,6 +74,10 @@ export {
   getServerUrl,
   setCustomServerUrl,
   getActiveServerUrl,
+  saveServerUrl,
+  loadServerUrl,
+  deleteServerUrl,
+  initializeServerUrl,
 
   // API Key Management
   saveApiKey,

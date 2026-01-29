@@ -40,11 +40,58 @@ export const getActiveServerUrl = (): string => {
   return customServerUrl || getServerUrl();
 };
 
+/**
+ * 앱 시작 시 저장된 서버 URL 로드
+ */
+export const initializeServerUrl = async (): Promise<void> => {
+  await loadServerUrl();
+};
+
 // ============================================
 // API Key Management (expo-secure-store)
 // ============================================
 
 const SECURE_STORE_KEY = 'choco_api_key';
+const SERVER_URL_KEY = 'choco_server_url';
+
+// ============================================
+// Server URL Persistence
+// ============================================
+
+export const saveServerUrl = async (url: string): Promise<boolean> => {
+  try {
+    await SecureStore.setItemAsync(SERVER_URL_KEY, url);
+    customServerUrl = url;  // 메모리에도 반영
+    return true;
+  } catch (error) {
+    console.error('[ChocoAI] Server URL 저장 실패:', error);
+    return false;
+  }
+};
+
+export const loadServerUrl = async (): Promise<string | null> => {
+  try {
+    const url = await SecureStore.getItemAsync(SERVER_URL_KEY);
+    if (url) {
+      customServerUrl = url;  // 메모리에 반영
+    }
+    return url;
+  } catch (error) {
+    console.error('[ChocoAI] Server URL 불러오기 실패:', error);
+    return null;
+  }
+};
+
+export const deleteServerUrl = async (): Promise<boolean> => {
+  try {
+    await SecureStore.deleteItemAsync(SERVER_URL_KEY);
+    customServerUrl = null;
+    return true;
+  } catch (error) {
+    console.error('[ChocoAI] Server URL 삭제 실패:', error);
+    return false;
+  }
+};
 
 export const saveApiKey = async (apiKey: string): Promise<boolean> => {
   try {

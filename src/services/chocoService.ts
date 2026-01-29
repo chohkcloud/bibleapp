@@ -3,7 +3,7 @@
 // 수정일: 2026-01-23 - API Key 인증 헤더 추가
 
 import { Platform } from 'react-native';
-import { getApiKey, getActiveServerUrl } from './chocoAI/chocoAIConfig';
+import { getApiKey, getActiveServerUrl, loadServerUrl } from './chocoAI/chocoAIConfig';
 
 export interface HybridEmotionResult {
   main_emotion: string;
@@ -56,13 +56,33 @@ class ChocoService {
   private lastFailedCheck: number = 0;
   private healthCheckInterval: number = 60000;
   private failedCooldownInterval: number = 5 * 60 * 1000; // 5분으로 단축
+  private isInitialized: boolean = false;
 
   constructor() {}
+
+  /**
+   * 서비스 초기화 (저장된 서버 URL 로드)
+   */
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    await loadServerUrl();
+    this.isInitialized = true;
+  }
+
+  /**
+   * 초기화 확인 후 실행
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+  }
 
   // 항상 최신 URL 사용
   private get baseUrl(): string { return getBaseUrl(); }
 
   async checkHealth(): Promise<HealthCheckResult | null> {
+    await this.ensureInitialized();
     try {
       const response = await fetchWithTimeout(this.baseUrl + '/api/health', { method: 'GET' }, 5000);
       if (!response.ok) { this.isAvailable = false; this.lastFailedCheck = Date.now(); return null; }
@@ -75,6 +95,7 @@ class ChocoService {
   }
 
   async isApiAvailable(): Promise<boolean> {
+    await this.ensureInitialized();
     const now = Date.now();
     if (this.lastFailedCheck > 0 && now - this.lastFailedCheck < this.failedCooldownInterval) return false;
     if (this.isAvailable && now - this.lastHealthCheck < this.healthCheckInterval) return true;

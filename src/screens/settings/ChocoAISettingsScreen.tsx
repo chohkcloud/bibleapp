@@ -22,6 +22,8 @@ import {
   deleteApiKey,
   setCustomServerUrl,
   getActiveServerUrl,
+  saveServerUrl,
+  loadServerUrl,
   checkServerHealth,
   getCurrentEnvironment,
   ChocoAIError,
@@ -73,7 +75,8 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
     addLog('설정 로드 시작...');
     addLog('Platform: ' + Platform.OS);
     try {
-      // 서버 URL 로드
+      // 서버 URL 로드 (저장된 값 우선)
+      await loadServerUrl();
       const currentUrl = getActiveServerUrl();
       setServerUrl(currentUrl);
       setInitialServerUrl(currentUrl);
@@ -111,7 +114,7 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
     setLatency(null);
 
     try {
-      // 임시로 설정 적용
+      // 임시로 설정 적용 (테스트용)
       setCustomServerUrl(serverUrl);
       await saveApiKey(apiKey);
 
@@ -154,8 +157,8 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
     setIsSaving(true);
 
     try {
-      // 서버 URL 저장
-      setCustomServerUrl(serverUrl);
+      // 서버 URL 저장 (영구 저장)
+      await saveServerUrl(serverUrl);
 
       // API Key 저장
       const saved = await saveApiKey(apiKey);
