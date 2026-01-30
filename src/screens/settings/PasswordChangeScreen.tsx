@@ -59,6 +59,7 @@ export function PasswordChangeScreen({ navigation }: Props) {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      <CustomHeader title="비밀번호 변경" showBackButton />
       <View style={styles.container}>
         <Text style={[styles.hint, { color: colors.textSecondary }]}>
           비밀번호는 6자리 숫자입니다

@@ -4,16 +4,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Platform,
-  StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
-
-// 안드로이드 상태바 높이
-const STATUSBAR_HEIGHT = Platform.OS === 'android'
-  ? (StatusBar.currentHeight || 24)
-  : 44;
 
 interface CustomHeaderProps {
   title: string;
@@ -35,6 +29,7 @@ export function CustomHeader({
 }: CustomHeaderProps) {
   const { colors } = useTheme();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -44,7 +39,7 @@ export function CustomHeader({
 
   return (
     <View style={[styles.header, {
-      paddingTop: STATUSBAR_HEIGHT + 10,
+      paddingTop: insets.top > 0 ? 4 : 4,
       backgroundColor: colors.background,
       borderBottomColor: colors.border,
     }]}>
