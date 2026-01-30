@@ -4,6 +4,7 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
+import * as Network from 'expo-network';
 import { Platform } from 'react-native';
 import { ChocoAIConfig } from './chocoAITypes';
 
@@ -21,9 +22,14 @@ export const getCurrentEnvironment = (): Environment => {
 // Server URL Configuration
 // ============================================
 
+// 내부 네트워크 (WiFi - 같은 공유기)
+const INTERNAL_URL = 'http://192.168.219.104:9090';
+// 외부 네트워크 (모바일 데이터 - 공인 IP 포트포워딩)
+const EXTERNAL_URL = 'http://117.111.123.99:9090';
+
 const SERVER_URLS: Record<Environment, string> = {
-  development: Platform.OS === 'android' ? 'http://10.0.2.2:9090' : 'http://192.168.219.104:9090',
-  production: 'http://192.168.219.104:9090',  // 같은 네트워크 내에서 사용
+  development: Platform.OS === 'android' ? 'http://10.0.2.2:9090' : INTERNAL_URL,
+  production: INTERNAL_URL,
 };
 
 export const getServerUrl = (): string => {
@@ -36,8 +42,41 @@ export const setCustomServerUrl = (url: string | null): void => {
   customServerUrl = url;
 };
 
+/**
+ * 네트워크 상태에 따라 서버 URL 자동 선택
+ * - WiFi: 내부 IP (빠름)
+ * - 모바일 데이터: 공인 IP (포트포워딩)
+ */
+export const getNetworkAwareServerUrl = async (): Promise<string> => {
+  try {
+    const networkState = await Network.getNetworkStateAsync();
+
+    if (networkState.type === Network.NetworkStateType.WIFI) {
+      console.log('[ChocoAI] WiFi 감지 → 내부 IP 사용');
+      return INTERNAL_URL;
+    } else if (networkState.type === Network.NetworkStateType.CELLULAR) {
+      console.log('[ChocoAI] 모바일 데이터 감지 → 공인 IP 사용');
+      return EXTERNAL_URL;
+    }
+  } catch (error) {
+    console.warn('[ChocoAI] 네트워크 감지 실패, 기본 URL 사용:', error);
+  }
+  return INTERNAL_URL;
+};
+
 export const getActiveServerUrl = (): string => {
   return customServerUrl || getServerUrl();
+};
+
+/**
+ * 네트워크 상태 기반 활성 URL (비동기)
+ * customServerUrl이 설정되어 있으면 그것을 우선 사용
+ */
+export const getActiveServerUrlAsync = async (): Promise<string> => {
+  if (customServerUrl) {
+    return customServerUrl;
+  }
+  return await getNetworkAwareServerUrl();
 };
 
 /**
@@ -142,10 +181,13 @@ export const DEFAULT_CONFIG: ChocoAIConfig = {
 };
 
 export const getConfig = async (): Promise<ChocoAIConfig> => {
-  const apiKey = await getApiKey();
+  const [apiKey, serverUrl] = await Promise.all([
+    getApiKey(),
+    getActiveServerUrlAsync(),
+  ]);
   return {
     ...DEFAULT_CONFIG,
-    serverUrl: getActiveServerUrl(),
+    serverUrl,
     apiKey: apiKey || '',
   };
 };

@@ -74,6 +74,8 @@ export {
   getServerUrl,
   setCustomServerUrl,
   getActiveServerUrl,
+  getActiveServerUrlAsync,
+  getNetworkAwareServerUrl,
   saveServerUrl,
   loadServerUrl,
   deleteServerUrl,

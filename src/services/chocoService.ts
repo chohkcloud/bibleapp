@@ -3,7 +3,7 @@
 // 수정일: 2026-01-23 - API Key 인증 헤더 추가
 
 import { Platform } from 'react-native';
-import { getApiKey, getActiveServerUrl, loadServerUrl } from './chocoAI/chocoAIConfig';
+import { getApiKey, getActiveServerUrl, getActiveServerUrlAsync, loadServerUrl } from './chocoAI/chocoAIConfig';
 
 export interface HybridEmotionResult {
   main_emotion: string;
@@ -43,6 +43,7 @@ export interface AnalyzeResult {
 }
 
 const getBaseUrl = (): string => getActiveServerUrl();
+const getBaseUrlAsync = async (): Promise<string> => getActiveServerUrlAsync();
 const API_TIMEOUT = 30000;
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeout: number = API_TIMEOUT): Promise<Response> {
@@ -83,13 +84,16 @@ class ChocoService {
     }
   }
 
-  // 항상 최신 URL 사용
+  // 동기 URL (폴백용)
   private get baseUrl(): string { return getBaseUrl(); }
+  // 비동기 URL (네트워크 감지)
+  private async resolveBaseUrl(): Promise<string> { return getBaseUrlAsync(); }
 
   async checkHealth(): Promise<HealthCheckResult | null> {
     await this.ensureInitialized();
     try {
-      const response = await fetchWithTimeout(this.baseUrl + '/api/health', { method: 'GET' }, 5000);
+      const url = await this.resolveBaseUrl();
+      const response = await fetchWithTimeout(url + '/api/health', { method: 'GET' }, 5000);
       if (!response.ok) { this.isAvailable = false; this.lastFailedCheck = Date.now(); return null; }
       const result: HealthCheckResult = await response.json();
       this.isAvailable = result.status === 'healthy' && result.ollama_status === 'connected';
@@ -115,10 +119,11 @@ class ChocoService {
     if (!text || text.trim().length === 0) return null;
     try {
       if (!await this.isApiAvailable()) return null;
+      const url = await this.resolveBaseUrl();
       const apiKey = await getApiKey();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (apiKey) headers['X-API-Key'] = apiKey;
-      const response = await fetchWithTimeout(this.baseUrl + '/api/sentiment/hybrid', { method: 'POST', headers, body: JSON.stringify({ text }) });
+      const response = await fetchWithTimeout(url + '/api/sentiment/hybrid', { method: 'POST', headers, body: JSON.stringify({ text }) });
       if (!response.ok) return null;
       const r: HybridEmotionApiResponse = await response.json();
       return { main_emotion: r.main_emotion, emotions: r.emotions || [], tone: r.tone || '', key_phrases: r.key_phrases || [],
@@ -140,8 +145,8 @@ class ChocoService {
 
     try {
       const healthResult = await this.checkHealth();
+      const url = await this.resolveBaseUrl();
       if (!healthResult || !this.isAvailable) {
-        const url = this.baseUrl;
         return { data: null, error: `서버 연결 실패 (${url}/api/health)` };
       }
 
@@ -150,7 +155,7 @@ class ChocoService {
       if (apiKey) headers['X-API-Key'] = apiKey;
 
       const response = await fetchWithTimeout(
-        this.baseUrl + '/api/sentiment/hybrid',
+        url + '/api/sentiment/hybrid',
         { method: 'POST', headers, body: JSON.stringify({ text }) }
       );
 
@@ -179,10 +184,11 @@ class ChocoService {
     if (!text || text.trim().length === 0) return null;
     try {
       if (!await this.isApiAvailable()) return null;
+      const url = await this.resolveBaseUrl();
       const apiKey = await getApiKey();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (apiKey) headers['X-API-Key'] = apiKey;
-      const response = await fetchWithTimeout(this.baseUrl + '/api/sentiment', { method: 'POST', headers, body: JSON.stringify({ text }) });
+      const response = await fetchWithTimeout(url + '/api/sentiment', { method: 'POST', headers, body: JSON.stringify({ text }) });
       if (!response.ok) return null;
       return await response.json();
     } catch { return null; }
@@ -191,10 +197,11 @@ class ChocoService {
   async searchSimilarEmotions(query: string, topK: number = 5): Promise<Array<{ text: string; emotion: string; source: string; score: number }> | null> {
     try {
       if (!await this.isApiAvailable()) return null;
+      const url = await this.resolveBaseUrl();
       const apiKey = await getApiKey();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (apiKey) headers['X-API-Key'] = apiKey;
-      const response = await fetchWithTimeout(this.baseUrl + '/api/sentiment/hybrid/search', { method: 'POST', headers, body: JSON.stringify({ query, top_k: topK }) });
+      const response = await fetchWithTimeout(url + '/api/sentiment/hybrid/search', { method: 'POST', headers, body: JSON.stringify({ query, top_k: topK }) });
       if (!response.ok) return null;
       return await response.json();
     } catch { return null; }
