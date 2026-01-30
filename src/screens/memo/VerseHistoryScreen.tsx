@@ -79,8 +79,10 @@ export function VerseHistoryScreen({ route, navigation }: Props) {
         });
       }
 
-      // 해당 구절의 메모 히스토리 로드
-      const verseMemos = await memoService.getMemosByVerse(verseId);
+      // 해당 구절의 메모 히스토리 로드 (bible_id 무관, 모든 버전)
+      const verseMemos = await memoService.getMemosByVerseLocation(
+        parsed.bookId, parsed.chapter, parsed.verseNum
+      );
       setMemos(verseMemos);
     } catch (error) {
       console.error('Error loading verse history:', error);

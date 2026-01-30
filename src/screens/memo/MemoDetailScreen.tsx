@@ -33,6 +33,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [memo, setMemo] = useState<Memo | null>(null);
   const [verse, setVerse] = useState<Verse | null>(null);
+  const [fullVerseText, setFullVerseText] = useState<string>('');
   const [bookName, setBookName] = useState('');
   const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -69,7 +70,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
       const book = books.find((b) => b.book_id === memoData.book_id);
       setBookName(book?.book_name || `${memoData.book_id}권`);
 
-      // 구절 로드
+      // 구절 로드 (범위 묵상인 경우 전체 구절 텍스트 합침)
       const verseData = await bibleService.getVerse(
         bibleVersion,
         memoData.book_id,
@@ -77,6 +78,18 @@ export function MemoDetailScreen({ route, navigation }: Props) {
         memoData.verse_num
       );
       setVerse(verseData);
+
+      // 범위 구절이면 전체 텍스트 합침 (피드백 API용)
+      if (memoData.verse_range && memoData.verse_start && memoData.verse_end) {
+        const verseTexts: string[] = [];
+        for (let vn = memoData.verse_start; vn <= memoData.verse_end; vn++) {
+          const v = await bibleService.getVerse(bibleVersion, memoData.book_id, memoData.chapter, vn);
+          if (v) verseTexts.push(v.text);
+        }
+        setFullVerseText(verseTexts.join(' '));
+      } else if (verseData) {
+        setFullVerseText(verseData.text);
+      }
 
       // 저장된 감정분석 결과 로드 (API 호출 안함)
       if (memoData.emotion_data) {
@@ -137,12 +150,18 @@ export function MemoDetailScreen({ route, navigation }: Props) {
 
   // 묵상 AI 피드백 요청
   const runFeedback = useCallback(async () => {
-    if (!memo || !verse) return;
+    if (!memo) return;
     setIsFeedbackLoading(true);
     setFeedbackError(null);
     try {
+      // bible_text: 범위 구절이면 합쳐진 전체 텍스트, 아니면 단일 구절
+      const bibleText = fullVerseText || verse?.text || '';
+      if (!bibleText) {
+        setFeedbackError('성경 본문을 불러올 수 없습니다. 성경 버전을 확인해주세요.');
+        return;
+      }
       const result = await chocoService.forceMeditationFeedback({
-        bible_text: verse.text,
+        bible_text: bibleText,
         bible_ref: getVerseRangeDisplay(),
         meditation_text: memo.content,
       });
@@ -158,7 +177,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     } finally {
       setIsFeedbackLoading(false);
     }
-  }, [memo, verse, bookName]);
+  }, [memo, verse, fullVerseText, bookName]);
 
   // 묵상 피드백 재요청 (경고 표시)
   const handleReRequestFeedback = () => {
