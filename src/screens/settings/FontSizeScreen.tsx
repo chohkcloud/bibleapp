@@ -4,6 +4,7 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
+import { CustomHeader } from '../../components/common/CustomHeader';
 import { useSettingsStore } from '../../store';
 
 const MIN_FONT_SIZE = 12;
@@ -27,6 +28,7 @@ export function FontSizeScreen() {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      <CustomHeader title="글자 크기" showBackButton />
       <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.preview, { backgroundColor: colors.surface }]}>
         <Text style={[styles.previewText, { color: colors.text, fontSize }]}>

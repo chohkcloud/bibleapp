@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SettingsStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
+import { CustomHeader } from '../../components/common/CustomHeader';
 import {
   saveApiKey,
   getApiKey,
@@ -270,6 +271,7 @@ export function ChocoAISettingsScreen({ navigation }: Props) {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      <CustomHeader title="Choco AI 설정" showBackButton />
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

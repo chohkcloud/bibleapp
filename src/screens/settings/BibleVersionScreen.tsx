@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
+import { CustomHeader } from '../../components/common/CustomHeader';
 import { useSettingsStore, useDownloadStore } from '../../store';
 import { bibleVersionService } from '../../services';
 import type { BibleVersionInfo, DownloadProgress } from '../../types/database';
@@ -273,6 +274,7 @@ export function BibleVersionScreen() {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      <CustomHeader title="성경 버전" showBackButton />
       <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 언어 필터 */}
         <View style={styles.filterContainer}>
