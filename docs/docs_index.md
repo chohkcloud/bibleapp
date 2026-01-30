@@ -13,7 +13,7 @@
 | 프로젝트명 | BibleApp (성경앱) |
 | 프레임워크 | React Native (Expo) |
 | 문서 생성일 | 2026-01-01 |
-| 문서 버전 | v3.4.0 |
+| 문서 버전 | v3.5.0 |
 | 문서 경로 | `C:/claude/claudeproject/bibleapp/docs/` |
 | 시간 기준 | 한국 표준시 (KST, UTC+9) |
 
@@ -86,6 +86,7 @@
 | 28 | 수정_UI개선_20260125_2215.md | 수정 | 글자 크기 +/- 버튼 추가 및 홈 화면 헤더 제거 (18단계) | 20260125_2215 | `C:/claude/claudeproject/bibleapp/docs/수정_UI개선_20260125_2215.md` |
 | 29 | 디버그_성경버전전환미표시수정_20260129_2155.md | 디버그 | 성경 버전 전환 시 본문 미표시 버그 수정 (ReadingScreen 번들/DB 분기) | 20260129_2155 | `C:/claude/claudeproject/bibleapp/docs/디버그_성경버전전환미표시수정_20260129_2155.md` |
 | 30 | 디버그_ChocoAPI접속테스트수정_20260129_2201.md | 디버그 | Choco API 접속 테스트 엔드포인트 불일치 수정 (/health → /api/health) | 20260129_2201 | `C:/claude/claudeproject/bibleapp/docs/디버그_ChocoAPI접속테스트수정_20260129_2201.md` |
+| 31 | 수정_AI분석결과영구저장_20260131_1000.md | 수정 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 | 20260131_1000 | `C:/claude/claudeproject/bibleapp/docs/수정_AI분석결과영구저장_20260131_1000.md` |
 
 ---
 
@@ -117,6 +118,7 @@
 | 2026-01-25 22:15 | v3.1.0 | 18단계: UI 개선 문서 등록 (글자 크기 버튼, 홈 헤더 제거) | Claude Code |
 | 2026-01-29 21:55 | v3.3.0 | 디버그: 성경 버전 전환 미표시 수정 문서 등록 | Claude Code |
 | 2026-01-29 22:01 | v3.4.0 | 디버그: Choco API 접속 테스트 수정 문서 등록 | Claude Code |
+| 2026-01-31 10:00 | v3.5.0 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 문서 등록 | Claude Code |
 
 ---
 
