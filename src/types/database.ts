@@ -70,6 +70,8 @@ export interface Memo {
   updated_at: string;
   is_deleted: number;     // Soft delete
   tags?: string;          // JOIN 결과
+  emotion_data?: string | null;    // AI 감정분석 결과 JSON
+  feedback_data?: string | null;   // AI 묵상 피드백 결과 JSON
 }
 
 export interface MemoTag {

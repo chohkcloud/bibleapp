@@ -284,11 +284,14 @@ export function MemoEditScreen({ route, navigation }: Props) {
     setIsSaving(true);
 
     try {
+      let savedMemoId: string;
+
       if (existingMemo) {
         await memoService.updateMemo(existingMemo.memo_id, {
           content: content.trim(),
           tags: tags.trim() || undefined,
         });
+        savedMemoId = existingMemo.memo_id;
       } else {
         // 다중 구절 지원: verseRange가 있으면 범위 정보 포함
         const verseNums = verseRange ? parseVerseRangeSimple(verseRange) : [verse.verse_num];
@@ -308,11 +311,18 @@ export function MemoEditScreen({ route, navigation }: Props) {
           tags: tags.trim() || undefined,
         });
 
+        savedMemoId = newMemoId;
         // 중복 생성 방지: 저장 후 existingMemo 설정 (BUG-C fix)
         setExistingMemo({ memo_id: newMemoId } as Memo);
       }
 
-      navigation.goBack();
+      // 감정분석 결과가 있으면 즉시 DB에 저장
+      if (emotionResult) {
+        await memoService.saveEmotionData(savedMemoId, JSON.stringify(emotionResult));
+      }
+
+      // 저장 후 QT 목록으로 이동
+      navigation.navigate('MemoList');
     } catch (error) {
       console.error('Error saving memo:', error);
       Alert.alert('오류', '메모 저장에 실패했습니다.');

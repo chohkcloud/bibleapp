@@ -462,6 +462,22 @@ class DatabaseService {
     if (!columnNames.includes('emotion_data')) {
       await udb.execAsync('ALTER TABLE memos ADD COLUMN emotion_data TEXT;');
     }
+    if (!columnNames.includes('feedback_data')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN feedback_data TEXT;');
+    }
+
+    // AI 분석 히스토리 테이블
+    await udb.execAsync(`
+      CREATE TABLE IF NOT EXISTS ai_analysis_history (
+        history_id TEXT PRIMARY KEY,
+        memo_id TEXT NOT NULL,
+        analysis_type TEXT NOT NULL,
+        result_data TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (memo_id) REFERENCES memos(memo_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_history_memo ON ai_analysis_history(memo_id, analysis_type);
+    `);
 
     // 번들 버전(KRV) 기록
     await this.registerBundledVersion();

@@ -40,6 +40,11 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   const [feedbackResult, setFeedbackResult] = useState<MeditationFeedbackResult | null>(null);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  // 히스토리 상태
+  const [showEmotionHistory, setShowEmotionHistory] = useState(false);
+  const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
+  const [emotionHistory, setEmotionHistory] = useState<Array<{ history_id: string; result_data: string; created_at: string }>>([]);
+  const [feedbackHistory, setFeedbackHistory] = useState<Array<{ history_id: string; result_data: string; created_at: string }>>([]);
   // 성경 참조 팝업 상태
   const [showVersePopup, setShowVersePopup] = useState(false);
   const [selectedRef, setSelectedRef] = useState<ParsedBibleRef | null>(null);
@@ -73,8 +78,21 @@ export function MemoDetailScreen({ route, navigation }: Props) {
       );
       setVerse(verseData);
 
-      // 감정분석 실행 (비동기)
-      analyzeEmotion(memoData.content);
+      // 저장된 감정분석 결과 로드 (API 호출 안함)
+      if (memoData.emotion_data) {
+        try {
+          const parsed = JSON.parse(memoData.emotion_data);
+          setEmotionResult(parsed);
+        } catch { /* 파싱 실패 무시 */ }
+      }
+
+      // 저장된 묵상 피드백 결과 로드
+      if (memoData.feedback_data) {
+        try {
+          const parsed = JSON.parse(memoData.feedback_data);
+          setFeedbackResult(parsed);
+        } catch { /* 파싱 실패 무시 */ }
+      }
     } catch (error) {
       console.error('Error loading memo:', error);
       Alert.alert('오류', '데이터를 불러오는데 실패했습니다.');
@@ -83,22 +101,96 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     }
   }, [memoId, bibleVersion, language, navigation]);
 
-  // 감정분석 실행
-  const analyzeEmotion = useCallback(async (content: string) => {
-    if (!content || content.trim().length < 10) {
-      return; // 내용이 너무 짧으면 분석하지 않음
-    }
-
+  // 감정분석 실행 (신규 또는 재분석)
+  const runEmotionAnalysis = useCallback(async () => {
+    if (!memo) return;
     try {
       setIsAnalyzing(true);
-      const result = await chocoService.analyzeHybridEmotion(content);
-      setEmotionResult(result);
+      const result = await chocoService.analyzeHybridEmotion(memo.content);
+      if (result) {
+        setEmotionResult(result);
+        const json = JSON.stringify(result);
+        await memoService.saveEmotionData(memo.memo_id, json);
+      }
     } catch (error) {
       console.log('[MemoDetail] 감정분석 실패:', error);
     } finally {
       setIsAnalyzing(false);
     }
-  }, []);
+  }, [memo]);
+
+  // 감정분석 재요청 (경고 표시)
+  const handleReAnalyzeEmotion = () => {
+    if (emotionResult) {
+      Alert.alert(
+        '재분석 확인',
+        '기존 감정분석 결과가 새 결과로 대체됩니다.\n기존 결과는 히스토리에서 확인 가능합니다.\n\n계속하시겠습니까?',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '재분석', onPress: runEmotionAnalysis },
+        ]
+      );
+    } else {
+      runEmotionAnalysis();
+    }
+  };
+
+  // 묵상 AI 피드백 요청
+  const runFeedback = useCallback(async () => {
+    if (!memo || !verse) return;
+    setIsFeedbackLoading(true);
+    setFeedbackError(null);
+    try {
+      const result = await chocoService.forceMeditationFeedback({
+        bible_text: verse.text,
+        bible_ref: getVerseRangeDisplay(),
+        meditation_text: memo.content,
+      });
+      if (result.error) {
+        setFeedbackError(result.error);
+      } else if (result.data) {
+        setFeedbackResult(result.data);
+        const json = JSON.stringify(result.data);
+        await memoService.saveFeedbackData(memo.memo_id, json);
+      }
+    } catch {
+      setFeedbackError('피드백 요청 중 오류가 발생했습니다.');
+    } finally {
+      setIsFeedbackLoading(false);
+    }
+  }, [memo, verse, bookName]);
+
+  // 묵상 피드백 재요청 (경고 표시)
+  const handleReRequestFeedback = () => {
+    if (feedbackResult) {
+      Alert.alert(
+        '재요청 확인',
+        '기존 묵상 피드백이 새 결과로 대체됩니다.\n기존 결과는 히스토리에서 확인 가능합니다.\n\n계속하시겠습니까?',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '재요청', onPress: runFeedback },
+        ]
+      );
+    } else {
+      runFeedback();
+    }
+  };
+
+  // 감정분석 히스토리 보기
+  const handleShowEmotionHistory = async () => {
+    if (!memo) return;
+    const history = await memoService.getAIAnalysisHistory(memo.memo_id, 'emotion');
+    setEmotionHistory(history);
+    setShowEmotionHistory(true);
+  };
+
+  // 피드백 히스토리 보기
+  const handleShowFeedbackHistory = async () => {
+    if (!memo) return;
+    const history = await memoService.getAIAnalysisHistory(memo.memo_id, 'feedback');
+    setFeedbackHistory(history);
+    setShowFeedbackHistory(true);
+  };
 
   // 화면 포커스될 때마다 새로고침
   useFocusEffect(
@@ -196,29 +288,6 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     ]);
   };
 
-  // 묵상 AI 피드백 요청
-  const handleRequestFeedback = async () => {
-    if (!memo || !verse) return;
-    setIsFeedbackLoading(true);
-    setFeedbackError(null);
-    try {
-      const result = await chocoService.forceMeditationFeedback({
-        bible_text: verse.text,
-        bible_ref: getVerseRangeDisplay(),
-        meditation_text: memo.content,
-      });
-      if (result.error) {
-        setFeedbackError(result.error);
-      } else {
-        setFeedbackResult(result.data);
-      }
-    } catch {
-      setFeedbackError('피드백 요청 중 오류가 발생했습니다.');
-    } finally {
-      setIsFeedbackLoading(false);
-    }
-  };
-
   // 해당 구절로 이동
   const handleGoToVerse = () => {
     if (!memo) return;
@@ -233,8 +302,10 @@ export function MemoDetailScreen({ route, navigation }: Props) {
 
   // 구절 히스토리 보기
   const handleViewHistory = () => {
-    if (!verse) return;
-    navigation.navigate('VerseHistory', { verseId: String(verse.verse_id) });
+    if (!memo) return;
+    // VerseHistoryScreen expects "bookId_chapter_verseNum" format
+    const verseIdStr = `${memo.book_id}_${memo.chapter}_${memo.verse_num}`;
+    navigation.navigate('VerseHistory', { verseId: verseIdStr });
   };
 
   // 성경 참조 클릭 핸들러
@@ -525,6 +596,24 @@ export function MemoDetailScreen({ route, navigation }: Props) {
                   </View>
                 </View>
               </View>
+
+              {/* 재분석 + 히스토리 버튼 */}
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.actionSmallButton, { backgroundColor: colors.primary + '15' }]}
+                  onPress={handleReAnalyzeEmotion}
+                >
+                  <Ionicons name="refresh" size={14} color={colors.primary} />
+                  <Text style={[styles.actionSmallButtonText, { color: colors.primary }]}>재분석</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionSmallButton, { backgroundColor: colors.border }]}
+                  onPress={handleShowEmotionHistory}
+                >
+                  <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                  <Text style={[styles.actionSmallButtonText, { color: colors.textSecondary }]}>이전 분석</Text>
+                </TouchableOpacity>
+              </View>
             </>
           ) : (
             /* 분석 전 상태 */
@@ -535,7 +624,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
               </Text>
               <TouchableOpacity
                 style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
-                onPress={() => analyzeEmotion(memo.content)}
+                onPress={handleReAnalyzeEmotion}
               >
                 <Text style={styles.analyzeButtonText}>
                   감정분석 시작하기
@@ -614,13 +703,23 @@ export function MemoDetailScreen({ route, navigation }: Props) {
                 <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>멘토 피드백</Text>
                 <Text style={[styles.feedbackText, { color: colors.text, lineHeight: 24 }]}>{feedbackResult.feedback}</Text>
               </View>
-              {/* 다시 요청 */}
-              <TouchableOpacity
-                style={[styles.analyzeButton, { backgroundColor: colors.primary + '15', marginTop: 12 }]}
-                onPress={handleRequestFeedback}
-              >
-                <Text style={[styles.analyzeButtonText, { color: colors.primary }]}>피드백 다시 받기</Text>
-              </TouchableOpacity>
+              {/* 재요청 + 히스토리 버튼 */}
+              <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.actionSmallButton, { backgroundColor: '#10b981' + '15' }]}
+                  onPress={handleReRequestFeedback}
+                >
+                  <Ionicons name="refresh" size={14} color="#10b981" />
+                  <Text style={[styles.actionSmallButtonText, { color: '#10b981' }]}>재요청</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionSmallButton, { backgroundColor: colors.border }]}
+                  onPress={handleShowFeedbackHistory}
+                >
+                  <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                  <Text style={[styles.actionSmallButtonText, { color: colors.textSecondary }]}>이전 피드백</Text>
+                </TouchableOpacity>
+              </View>
             </>
           ) : feedbackError ? (
             <View style={styles.beforeAnalyzeContainer}>
@@ -628,7 +727,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
               <Text style={[styles.beforeAnalyzeText, { color: colors.error }]}>{feedbackError}</Text>
               <TouchableOpacity
                 style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
-                onPress={handleRequestFeedback}
+                onPress={runFeedback}
               >
                 <Text style={styles.analyzeButtonText}>다시 시도</Text>
               </TouchableOpacity>
@@ -641,7 +740,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
               </Text>
               <TouchableOpacity
                 style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
-                onPress={handleRequestFeedback}
+                onPress={runFeedback}
               >
                 <Text style={styles.analyzeButtonText}>묵상 피드백 받기</Text>
               </TouchableOpacity>
@@ -706,6 +805,74 @@ export function MemoDetailScreen({ route, navigation }: Props) {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* 감정분석 히스토리 */}
+      {showEmotionHistory && (
+        <View style={[styles.historyOverlay, { backgroundColor: colors.background }]}>
+          <View style={[styles.historyHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.historyTitle, { color: colors.text }]}>감정분석 히스토리</Text>
+            <TouchableOpacity onPress={() => setShowEmotionHistory(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.historyList}>
+            {emotionHistory.length === 0 ? (
+              <Text style={[styles.historyEmpty, { color: colors.textSecondary }]}>히스토리가 없습니다</Text>
+            ) : (
+              emotionHistory.map((item, idx) => {
+                const data: HybridEmotionResult | null = (() => { try { return JSON.parse(item.result_data); } catch { return null; } })();
+                return (
+                  <View key={item.history_id} style={[styles.historyItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.historyDate, { color: colors.textSecondary }]}>
+                      {idx === 0 ? '(현재) ' : ''}{formatDate(item.created_at)}
+                    </Text>
+                    {data && (
+                      <View style={styles.historyContent}>
+                        <Text style={{ fontSize: 24 }}>{chocoService.getEmotionIcon(data.main_emotion)}</Text>
+                        <Text style={[styles.historyMainText, { color: colors.text }]}>{data.main_emotion}</Text>
+                        {data.tone ? <Text style={[styles.historySubText, { color: colors.textSecondary }]}>"{data.tone}"</Text> : null}
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* 피드백 히스토리 */}
+      {showFeedbackHistory && (
+        <View style={[styles.historyOverlay, { backgroundColor: colors.background }]}>
+          <View style={[styles.historyHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.historyTitle, { color: colors.text }]}>묵상 피드백 히스토리</Text>
+            <TouchableOpacity onPress={() => setShowFeedbackHistory(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.historyList}>
+            {feedbackHistory.length === 0 ? (
+              <Text style={[styles.historyEmpty, { color: colors.textSecondary }]}>히스토리가 없습니다</Text>
+            ) : (
+              feedbackHistory.map((item, idx) => {
+                const data: MeditationFeedbackResult | null = (() => { try { return JSON.parse(item.result_data); } catch { return null; } })();
+                return (
+                  <View key={item.history_id} style={[styles.historyItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[styles.historyDate, { color: colors.textSecondary }]}>
+                      {idx === 0 ? '(현재) ' : ''}{formatDate(item.created_at)}
+                    </Text>
+                    {data && (
+                      <View style={styles.historyContent}>
+                        <Text style={[styles.historySubText, { color: colors.text }]}>{data.feedback}</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      )}
 
       {/* 성경 참조 팝업 */}
       <VersePopup
@@ -1026,6 +1193,79 @@ const styles = StyleSheet.create({
   ragInfoDivider: {
     width: 1,
     height: 30,
+  },
+  // 액션 버튼 행
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 12,
+  },
+  actionSmallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  actionSmallButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // 히스토리 오버레이
+  historyOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 100,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  historyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  historyList: {
+    flex: 1,
+    padding: 16,
+  },
+  historyEmpty: {
+    textAlign: 'center',
+    fontSize: 14,
+    marginTop: 40,
+  },
+  historyItem: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  historyDate: {
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  historyContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  historyMainText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  historySubText: {
+    fontSize: 13,
+    lineHeight: 20,
+    flex: 1,
   },
   // 피드백 섹션
   feedbackSection: {

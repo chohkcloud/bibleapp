@@ -29,6 +29,10 @@ import {
   deleteHighlight,
   deleteHighlightByVerse,
   getHighlightsByChapter,
+  updateMemoEmotionData,
+  updateMemoFeedbackData,
+  addAnalysisHistory,
+  getAnalysisHistory,
 } from './database/memoQueries';
 import type {
   Memo,
@@ -110,8 +114,8 @@ class MemoService {
 
       const memoId = await createMemo(dto);
 
-      // 감정분석 실행 (백그라운드, 비동기)
-      this.triggerEmotionAnalysis(input.content);
+      // 감정분석 실행 (백그라운드, 비동기 - 결과 DB 저장)
+      this.triggerEmotionAnalysis(input.content, memoId);
 
       return memoId;
     } catch (error) {
@@ -277,8 +281,8 @@ class MemoService {
         const encryptionKey = await authService.getEncryptionKey();
         dto.content = await encrypt(input.content, encryptionKey);
 
-        // 감정분석 실행 (백그라운드, 비동기)
-        this.triggerEmotionAnalysis(input.content);
+        // 감정분석 실행 (백그라운드, 비동기 - 결과 DB 저장)
+        this.triggerEmotionAnalysis(input.content, memoId);
       }
 
       if (input.tagIds !== undefined) {
@@ -299,19 +303,45 @@ class MemoService {
   }
 
   /**
-   * 감정분석 트리거 (백그라운드 실행)
-   * API 활성화 체크 후 분석 실행
-   * 비활성화 시 3시간 후 재시도
+   * 감정분석 트리거 (백그라운드 실행, 결과를 DB에 저장)
    */
-  private triggerEmotionAnalysis(content: string): void {
-    // 비동기로 실행 (저장 흐름을 블로킹하지 않음)
-    chocoService.analyzeOnSave(content).then(result => {
-      if (result) {
-        console.log(`[MemoService] 감정분석 완료: ${result.main_emotion}`);
+  private triggerEmotionAnalysis(content: string, memoId?: string): void {
+    chocoService.analyzeOnSave(content).then(async result => {
+      if (result && memoId) {
+        const json = JSON.stringify(result);
+        await updateMemoEmotionData(memoId, json);
+        await addAnalysisHistory(memoId, 'emotion', json);
+        console.log(`[MemoService] 감정분석 저장 완료: ${result.main_emotion}`);
       }
     }).catch(error => {
       console.log('[MemoService] 감정분석 에러:', error);
     });
+  }
+
+  /**
+   * 감정분석 결과를 메모에 저장
+   */
+  async saveEmotionData(memoId: string, resultJson: string): Promise<void> {
+    await updateMemoEmotionData(memoId, resultJson);
+    await addAnalysisHistory(memoId, 'emotion', resultJson);
+  }
+
+  /**
+   * 묵상 피드백 결과를 메모에 저장
+   */
+  async saveFeedbackData(memoId: string, resultJson: string): Promise<void> {
+    await updateMemoFeedbackData(memoId, resultJson);
+    await addAnalysisHistory(memoId, 'feedback', resultJson);
+  }
+
+  /**
+   * AI 분석 히스토리 조회
+   */
+  async getAIAnalysisHistory(
+    memoId: string,
+    type: 'emotion' | 'feedback'
+  ): Promise<Array<{ history_id: string; result_data: string; created_at: string }>> {
+    return await getAnalysisHistory(memoId, type);
   }
 
   /**

@@ -676,3 +676,67 @@ export async function getTotalBookmarkCount(): Promise<number> {
   );
   return result?.count ?? 0;
 }
+
+// ============================================
+// AI 분석 데이터 저장/조회
+// ============================================
+
+/**
+ * 메모의 감정분석 데이터 저장
+ */
+export async function updateMemoEmotionData(memoId: string, emotionDataJson: string): Promise<void> {
+  if (isWeb) return;
+  const db = databaseService.getUserDb();
+  await db.runAsync(
+    'UPDATE memos SET emotion_data = ?, updated_at = ? WHERE memo_id = ?',
+    [emotionDataJson, getCurrentISOTime(), memoId]
+  );
+}
+
+/**
+ * 메모의 묵상 피드백 데이터 저장
+ */
+export async function updateMemoFeedbackData(memoId: string, feedbackDataJson: string): Promise<void> {
+  if (isWeb) return;
+  const db = databaseService.getUserDb();
+  await db.runAsync(
+    'UPDATE memos SET feedback_data = ?, updated_at = ? WHERE memo_id = ?',
+    [feedbackDataJson, getCurrentISOTime(), memoId]
+  );
+}
+
+/**
+ * AI 분석 히스토리 추가
+ */
+export async function addAnalysisHistory(
+  memoId: string,
+  analysisType: 'emotion' | 'feedback',
+  resultDataJson: string
+): Promise<void> {
+  if (isWeb) return;
+  const db = databaseService.getUserDb();
+  const historyId = generateUUID();
+  await db.runAsync(
+    `INSERT INTO ai_analysis_history (history_id, memo_id, analysis_type, result_data, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [historyId, memoId, analysisType, resultDataJson, getCurrentISOTime()]
+  );
+}
+
+/**
+ * AI 분석 히스토리 조회
+ */
+export async function getAnalysisHistory(
+  memoId: string,
+  analysisType: 'emotion' | 'feedback'
+): Promise<Array<{ history_id: string; result_data: string; created_at: string }>> {
+  if (isWeb) return [];
+  const db = databaseService.getUserDb();
+  return await db.getAllAsync<{ history_id: string; result_data: string; created_at: string }>(
+    `SELECT history_id, result_data, created_at
+     FROM ai_analysis_history
+     WHERE memo_id = ? AND analysis_type = ?
+     ORDER BY created_at DESC`,
+    [memoId, analysisType]
+  );
+}

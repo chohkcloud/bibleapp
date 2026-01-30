@@ -61,7 +61,7 @@ export function MainTabs() {
       <Tab.Screen
         name="MemoTab"
         component={MemoStack}
-        options={{ tabBarLabel: '메모' }}
+        options={{ tabBarLabel: 'QT' }}
       />
       <Tab.Screen
         name="SettingsTab"
