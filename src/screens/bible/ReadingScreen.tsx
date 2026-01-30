@@ -90,6 +90,17 @@ export function ReadingScreen({ route, navigation }: Props) {
   const [rangeEnd, setRangeEnd] = useState<number | null>(null);
   const [selectedRange, setSelectedRange] = useState<VerseWithMeta[]>([]);
 
+  // 묵상 히스토리 모달
+  const [showMeditationHistory, setShowMeditationHistory] = useState(false);
+  const [meditationHistoryMemos, setMeditationHistoryMemos] = useState<Memo[]>([]);
+  const [meditationHistoryLoading, setMeditationHistoryLoading] = useState(false);
+  const [pendingMemoNavParams, setPendingMemoNavParams] = useState<{
+    verseId: number;
+    bookId: number;
+    chapter: number;
+    verseRange?: string;
+  } | null>(null);
+
   // 기본 헤더 숨기기
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -323,26 +334,54 @@ export function ReadingScreen({ route, navigation }: Props) {
     }
   };
 
-  // 범위 묵상 작성
-  const handleRangeMemo = () => {
+  // 범위 묵상 작성 (범위 내 기존 묵상 있으면 히스토리 모달)
+  const handleRangeMemo = async () => {
     if (selectedRange.length === 0) return;
 
     const sortedVerses = [...selectedRange].sort((a, b) => a.verse_num - b.verse_num);
     const firstVerse = sortedVerses[0];
     const verseNums = sortedVerses.map(v => v.verse_num);
     const rangeStr = versesToRangeString(verseNums);
+    const hasExistingMemos = sortedVerses.some(v => v.hasMemo);
 
     cancelRangeSelect();
 
-    navigation.navigate('MemoTab' as any, {
-      screen: 'MemoEdit',
-      params: {
-        verseId: firstVerse.verse_id,
-        bookId: bookId,
-        chapter: chapter,
-        verseRange: rangeStr,  // 다중 구절 범위 전달
-      },
-    });
+    const navParams = {
+      verseId: firstVerse.verse_id,
+      bookId: bookId,
+      chapter: chapter,
+      verseRange: rangeStr,
+    };
+
+    if (hasExistingMemos) {
+      setPendingMemoNavParams(navParams);
+      setMeditationHistoryLoading(true);
+      setShowMeditationHistory(true);
+      try {
+        const allMemos: Memo[] = [];
+        for (const v of sortedVerses) {
+          const verseMemos = await memoService.getMemosByVerseLocation(
+            bookId, chapter, v.verse_num
+          );
+          allMemos.push(...verseMemos);
+        }
+        // 중복 제거 후 최신순 정렬
+        const uniqueMemos = Array.from(
+          new Map(allMemos.map(m => [m.memo_id, m])).values()
+        ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setMeditationHistoryMemos(uniqueMemos);
+      } catch (error) {
+        console.error('Error loading meditation history:', error);
+        setMeditationHistoryMemos([]);
+      } finally {
+        setMeditationHistoryLoading(false);
+      }
+    } else {
+      navigation.navigate('MemoTab' as any, {
+        screen: 'MemoEdit',
+        params: navParams,
+      });
+    }
   };
 
   // 선택된 범위인지 확인
@@ -384,18 +423,38 @@ export function ReadingScreen({ route, navigation }: Props) {
     setShowActionModal(false);
   };
 
-  // 메모 작성 (기존 - 상세 화면으로 이동)
-  const handleWriteMemo = () => {
+  // 메모 작성 (기존 묵상 있으면 히스토리 모달, 없으면 바로 이동)
+  const handleWriteMemo = async () => {
     if (!selectedVerse) return;
     setShowActionModal(false);
-    navigation.navigate('MemoTab' as any, {
-      screen: 'MemoEdit',
-      params: {
-        verseId: selectedVerse.verse_id,  // number 타입으로 전달
-        bookId: bookId,
-        chapter: chapter,
-      },
-    });
+
+    const navParams = {
+      verseId: selectedVerse.verse_id,
+      bookId: bookId,
+      chapter: chapter,
+    };
+
+    if (selectedVerse.hasMemo) {
+      setPendingMemoNavParams(navParams);
+      setMeditationHistoryLoading(true);
+      setShowMeditationHistory(true);
+      try {
+        const memos = await memoService.getMemosByVerseLocation(
+          bookId, chapter, selectedVerse.verse_num
+        );
+        setMeditationHistoryMemos(memos);
+      } catch (error) {
+        console.error('Error loading meditation history:', error);
+        setMeditationHistoryMemos([]);
+      } finally {
+        setMeditationHistoryLoading(false);
+      }
+    } else {
+      navigation.navigate('MemoTab' as any, {
+        screen: 'MemoEdit',
+        params: navParams,
+      });
+    }
   };
 
   // 주석 저장 (인라인)
@@ -1163,6 +1222,114 @@ export function ReadingScreen({ route, navigation }: Props) {
             bookName={bookName}
           />
         )}
+
+        {/* 묵상 히스토리 모달 */}
+        <Modal
+          visible={showMeditationHistory}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowMeditationHistory(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowMeditationHistory(false)}
+          >
+            <View style={[styles.meditationHistoryModal, { backgroundColor: colors.surface }]}>
+              <Pressable onPress={(e) => e.stopPropagation()}>
+                {/* 헤더 */}
+                <View style={styles.meditationHistoryHeader}>
+                  <Text style={[styles.meditationHistoryTitle, { color: colors.text }]}>
+                    묵상 기록
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowMeditationHistory(false)}>
+                    <Text style={[styles.meditationHistoryClose, { color: colors.textSecondary }]}>
+                      닫기
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 횟수 */}
+                {!meditationHistoryLoading && (
+                  <View style={[styles.meditationCountBadge, { backgroundColor: colors.primary + '15' }]}>
+                    <Text style={[styles.meditationCountText, { color: colors.primary }]}>
+                      상세 묵상 횟수: {meditationHistoryMemos.length}회
+                    </Text>
+                  </View>
+                )}
+
+                {/* 묵상 목록 */}
+                <ScrollView
+                  style={styles.meditationHistoryList}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {meditationHistoryLoading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.primary}
+                      style={{ marginVertical: 20 }}
+                    />
+                  ) : (
+                    meditationHistoryMemos.map((memo, index) => (
+                      <TouchableOpacity
+                        key={memo.memo_id}
+                        style={[
+                          styles.meditationHistoryItem,
+                          { backgroundColor: colors.background, borderColor: colors.border },
+                        ]}
+                        onPress={() => {
+                          setShowMeditationHistory(false);
+                          navigation.navigate('MemoTab' as any, {
+                            screen: 'MemoEdit',
+                            params: { memoId: memo.memo_id },
+                          });
+                        }}
+                      >
+                        <View style={styles.meditationHistoryItemHeader}>
+                          <View style={[styles.meditationIndexBadge, { backgroundColor: colors.primary + '20' }]}>
+                            <Text style={[styles.meditationIndexText, { color: colors.primary }]}>
+                              #{index + 1}
+                            </Text>
+                          </View>
+                          <Text style={[styles.meditationDateText, { color: colors.textSecondary }]}>
+                            {new Date(memo.created_at).toLocaleDateString('ko-KR', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[styles.meditationPreviewText, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {memo.content}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+
+                {/* 새 묵상 작성 버튼 */}
+                <TouchableOpacity
+                  style={[styles.newMeditationButton, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    setShowMeditationHistory(false);
+                    if (pendingMemoNavParams) {
+                      navigation.navigate('MemoTab' as any, {
+                        screen: 'MemoEdit',
+                        params: pendingMemoNavParams,
+                      });
+                    }
+                  }}
+                >
+                  <Text style={styles.newMeditationButtonText}>
+                    새 묵상 작성
+                  </Text>
+                </TouchableOpacity>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
     </View>
   );
 }
@@ -1706,5 +1873,80 @@ const styles = StyleSheet.create({
   dictGuideText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  // 묵상 히스토리 모달
+  meditationHistoryModal: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: '70%',
+  },
+  meditationHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  meditationHistoryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  meditationHistoryClose: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  meditationCountBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  meditationCountText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  meditationHistoryList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  meditationHistoryItem: {
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  meditationHistoryItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  meditationIndexBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  meditationIndexText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  meditationDateText: {
+    fontSize: 13,
+  },
+  meditationPreviewText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  newMeditationButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  newMeditationButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

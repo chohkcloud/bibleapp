@@ -226,6 +226,36 @@ export async function getMemosByVerse(
 }
 
 /**
+ * 특정 구절의 메모 목록 조회 (bible_id 무관)
+ */
+export async function getMemosByVerseLocation(
+  bookId: number,
+  chapter: number,
+  verseNum: number
+): Promise<Memo[]> {
+  if (isWeb) {
+    return webMemos.filter(
+      m => m.book_id === bookId &&
+           m.chapter === chapter &&
+           m.verse_num === verseNum && !m.is_deleted
+    ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  const db = databaseService.getUserDb();
+  return await db.getAllAsync<Memo>(
+    `SELECT m.*, GROUP_CONCAT(t.tag_name) as tags
+     FROM memos m
+     LEFT JOIN memo_tag_map mtm ON m.memo_id = mtm.memo_id
+     LEFT JOIN memo_tags t ON mtm.tag_id = t.tag_id
+     WHERE m.book_id = ? AND m.chapter = ? AND m.verse_num = ?
+       AND m.is_deleted = 0
+     GROUP BY m.memo_id
+     ORDER BY m.created_at DESC`,
+    [bookId, chapter, verseNum]
+  );
+}
+
+/**
  * 모든 메모 목록 조회
  */
 export async function getAllMemos(limit: number = 50, offset: number = 0): Promise<Memo[]> {

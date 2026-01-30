@@ -15,6 +15,7 @@ import {
   permanentDeleteMemo,
   getMemoById,
   getMemosByVerse,
+  getMemosByVerseLocation,
   getAllMemos,
   getMemosByTag,
   createTag,
@@ -229,6 +230,26 @@ class MemoService {
       throw new AppError(
         ErrorCode.DB_QUERY_FAILED,
         '메모 조회에 실패했습니다.',
+        error as Error
+      );
+    }
+  }
+
+  /**
+   * 특정 구절의 메모 목록 (bible_id 무관, 복호화 적용)
+   */
+  async getMemosByVerseLocation(
+    bookId: number,
+    chapter: number,
+    verseNum: number
+  ): Promise<Memo[]> {
+    try {
+      const memos = await getMemosByVerseLocation(bookId, chapter, verseNum);
+      return await this.decryptMemos(this.addIdAlias(memos));
+    } catch (error) {
+      throw new AppError(
+        ErrorCode.DB_QUERY_FAILED,
+        '구절 묵상 조회에 실패했습니다.',
         error as Error
       );
     }
