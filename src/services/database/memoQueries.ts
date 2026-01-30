@@ -79,9 +79,11 @@ export async function createMemo(dto: CreateMemoDto): Promise<string> {
 
   await db.runAsync(
     `INSERT INTO memos (memo_id, verse_id, bible_id, book_id, chapter, verse_num,
+                        verse_start, verse_end, verse_range,
                         content, is_encrypted, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [memoId, dto.verse_id, dto.bible_id, dto.book_id, dto.chapter, dto.verse_num,
+     dto.verse_start ?? null, dto.verse_end ?? null, dto.verse_range ?? null,
      dto.content, now, now]
   );
 

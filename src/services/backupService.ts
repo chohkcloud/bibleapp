@@ -16,8 +16,12 @@ interface BackupMemo {
   book_id: number;
   chapter: number;
   verse_num: number;
+  verse_start?: number | null;
+  verse_end?: number | null;
+  verse_range?: string | null;
   content: string; // 복호화된 내용
   tags: string | null;
+  emotion_data?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -105,8 +109,12 @@ class BackupService {
             book_id: memo.book_id,
             chapter: memo.chapter,
             verse_num: memo.verse_num,
+            verse_start: memo.verse_start ?? null,
+            verse_end: memo.verse_end ?? null,
+            verse_range: memo.verse_range ?? null,
             content,
             tags: memo.tags,
+            emotion_data: memo.emotion_data ?? null,
             created_at: memo.created_at,
             updated_at: memo.updated_at,
           };
@@ -271,8 +279,8 @@ class BackupService {
         const encryptedContent = await encrypt(memo.content, encryptionKey);
         await db.runAsync(
           `INSERT OR REPLACE INTO memos
-           (memo_id, verse_id, bible_id, book_id, chapter, verse_num, content, tags, is_encrypted, created_at, updated_at, is_deleted)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)`,
+           (memo_id, verse_id, bible_id, book_id, chapter, verse_num, verse_start, verse_end, verse_range, content, tags, emotion_data, is_encrypted, created_at, updated_at, is_deleted)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)`,
           [
             memo.memo_id,
             memo.verse_id,
@@ -280,8 +288,12 @@ class BackupService {
             memo.book_id,
             memo.chapter,
             memo.verse_num,
+            memo.verse_start ?? null,
+            memo.verse_end ?? null,
+            memo.verse_range ?? null,
             encryptedContent,
             memo.tags,
+            memo.emotion_data ?? null,
             memo.created_at || now,
             memo.updated_at || now,
           ]

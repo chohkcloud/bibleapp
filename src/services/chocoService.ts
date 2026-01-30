@@ -42,6 +42,20 @@ export interface AnalyzeResult {
   error: string | null;
 }
 
+export interface MeditationFeedbackResult {
+  bible_summary: string;
+  meditation_summary: string;
+  focus_points: string[];
+  emotions: string[];
+  feedback: string;
+}
+
+export interface MeditationFeedbackInput {
+  bible_text: string;
+  bible_ref: string;
+  meditation_text: string;
+}
+
 const getBaseUrl = (): string => getActiveServerUrl();
 const getBaseUrlAsync = async (): Promise<string> => getActiveServerUrlAsync();
 const API_TIMEOUT = 30000;
@@ -192,6 +206,71 @@ class ChocoService {
       if (!response.ok) return null;
       return await response.json();
     } catch { return null; }
+  }
+
+  /**
+   * 묵상 피드백 요청 (SOLAR 10.7B 모델 사용)
+   */
+  async getMeditationFeedback(input: MeditationFeedbackInput): Promise<MeditationFeedbackResult | null> {
+    if (!input.meditation_text || input.meditation_text.trim().length < 10) return null;
+    try {
+      if (!await this.isApiAvailable()) return null;
+      const url = await this.resolveBaseUrl();
+      const apiKey = await getApiKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
+      const response = await fetchWithTimeout(
+        url + '/api/meditation/feedback',
+        { method: 'POST', headers, body: JSON.stringify(input) },
+        60000 // SOLAR 모델은 응답이 느릴 수 있으므로 60초 타임아웃
+      );
+      if (!response.ok) return null;
+      return await response.json();
+    } catch { return null; }
+  }
+
+  /**
+   * 묵상 피드백 강제 요청 (수동 버튼용) - 에러 메시지 포함
+   */
+  async forceMeditationFeedback(input: MeditationFeedbackInput): Promise<{ data: MeditationFeedbackResult | null; error: string | null }> {
+    if (!input.meditation_text || input.meditation_text.trim().length < 10)
+      return { data: null, error: '묵상 내용이 너무 짧습니다. (최소 10자)' };
+    if (!input.bible_text || input.bible_text.trim().length === 0)
+      return { data: null, error: '성경 본문이 필요합니다.' };
+
+    this.resetCooldown();
+    await this.ensureInitialized();
+
+    try {
+      const healthResult = await this.checkHealth();
+      const url = await this.resolveBaseUrl();
+      if (!healthResult || !this.isAvailable) {
+        return { data: null, error: `서버 연결 실패 (${url})` };
+      }
+
+      const apiKey = await getApiKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
+
+      const response = await fetchWithTimeout(
+        url + '/api/meditation/feedback',
+        { method: 'POST', headers, body: JSON.stringify(input) },
+        60000
+      );
+
+      if (!response.ok) {
+        let detail = '';
+        try { const body = await response.json(); detail = (body as ApiError).detail || ''; } catch {}
+        return { data: null, error: `API 오류 (${response.status})${detail ? ': ' + detail : ''}` };
+      }
+
+      const result: MeditationFeedbackResult = await response.json();
+      return { data: result, error: null };
+    } catch (e: any) {
+      const msg = e?.message || '알 수 없는 오류';
+      if (msg.includes('aborted')) return { data: null, error: '서버 응답 시간 초과 (60초)' };
+      return { data: null, error: `네트워크 오류: ${msg}` };
+    }
   }
 
   async searchSimilarEmotions(query: string, topK: number = 5): Promise<Array<{ text: string; emotion: string; source: string; score: number }> | null> {

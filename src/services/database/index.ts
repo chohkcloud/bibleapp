@@ -444,6 +444,25 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_highlights_chapter ON highlights(bible_id, book_id, chapter);
     `);
 
+    // 마이그레이션: memos 테이블에 누락된 컬럼 추가
+    const udb = this.userDb!;
+    const memoColumns = await udb.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(memos)"
+    );
+    const columnNames = memoColumns.map((c) => c.name);
+    if (!columnNames.includes('verse_start')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN verse_start INTEGER;');
+    }
+    if (!columnNames.includes('verse_end')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN verse_end INTEGER;');
+    }
+    if (!columnNames.includes('verse_range')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN verse_range TEXT;');
+    }
+    if (!columnNames.includes('emotion_data')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN emotion_data TEXT;');
+    }
+
     // 번들 버전(KRV) 기록
     await this.registerBundledVersion();
   }

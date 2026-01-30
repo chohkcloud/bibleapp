@@ -17,8 +17,9 @@ import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { LinkedText, VersePopup } from '../../components/memo';
 import { useSettingsStore } from '../../store';
+import { Linking } from 'react-native';
 import { memoService, bibleService, chocoService } from '../../services';
-import type { HybridEmotionResult } from '../../services/chocoService';
+import type { HybridEmotionResult, MeditationFeedbackResult } from '../../services/chocoService';
 import type { Memo, Verse } from '../../types/database';
 import type { ParsedBibleRef } from '../../utils/bibleRefParser';
 
@@ -35,6 +36,10 @@ export function MemoDetailScreen({ route, navigation }: Props) {
   const [bookName, setBookName] = useState('');
   const [emotionResult, setEmotionResult] = useState<HybridEmotionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 묵상 피드백 상태
+  const [feedbackResult, setFeedbackResult] = useState<MeditationFeedbackResult | null>(null);
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   // 성경 참조 팝업 상태
   const [showVersePopup, setShowVersePopup] = useState(false);
   const [selectedRef, setSelectedRef] = useState<ParsedBibleRef | null>(null);
@@ -131,18 +136,86 @@ export function MemoDetailScreen({ route, navigation }: Props) {
     );
   };
 
-  // 공유
+  // 공유 텍스트 생성
+  const buildShareText = () => {
+    if (!memo) return '';
+    const verseRef = getVerseRangeDisplay();
+    const verseBody = verse ? `\n\n"${verse.text}"` : '';
+    return `📖 ${verseRef}${verseBody}\n\n📝 묵상:\n${memo.content}\n\n- BibleApp`;
+  };
+
+  // 공유 (기본 공유 시트)
   const handleShare = async () => {
-    if (!memo || !verse) return;
-
+    if (!memo) return;
     try {
-      const shareText = `📖 ${bookName} ${memo.chapter}:${memo.verse_num}\n\n"${verse.text}"\n\n📝 묵상:\n${memo.content}\n\n- BibleApp`;
-
-      await Share.share({
-        message: shareText,
-      });
+      await Share.share({ message: buildShareText() });
     } catch (error) {
       console.error('Error sharing:', error);
+    }
+  };
+
+  // 카카오톡 공유
+  const handleShareKakao = async () => {
+    if (!memo) return;
+    const text = encodeURIComponent(buildShareText());
+    const kakaoUrl = `kakaotalk://msg/text?text=${text}`;
+    try {
+      const canOpen = await Linking.canOpenURL(kakaoUrl);
+      if (canOpen) {
+        await Linking.openURL(kakaoUrl);
+      } else {
+        // 카카오톡 미설치 시 기본 공유 시트
+        await Share.share({ message: buildShareText() });
+      }
+    } catch {
+      await Share.share({ message: buildShareText() });
+    }
+  };
+
+  // 메일 공유
+  const handleShareEmail = async () => {
+    if (!memo) return;
+    const subject = encodeURIComponent(`묵상 나눔 - ${getVerseRangeDisplay()}`);
+    const body = encodeURIComponent(buildShareText());
+    const mailUrl = `mailto:?subject=${subject}&body=${body}`;
+    try {
+      await Linking.openURL(mailUrl);
+    } catch {
+      await Share.share({ message: buildShareText() });
+    }
+  };
+
+  // 공유 방식 선택
+  const handleShareMenu = () => {
+    if (!memo) return;
+    Alert.alert('묵상 공유', '공유 방법을 선택하세요', [
+      { text: '카카오톡', onPress: handleShareKakao },
+      { text: '이메일', onPress: handleShareEmail },
+      { text: '기타 앱', onPress: handleShare },
+      { text: '취소', style: 'cancel' },
+    ]);
+  };
+
+  // 묵상 AI 피드백 요청
+  const handleRequestFeedback = async () => {
+    if (!memo || !verse) return;
+    setIsFeedbackLoading(true);
+    setFeedbackError(null);
+    try {
+      const result = await chocoService.forceMeditationFeedback({
+        bible_text: verse.text,
+        bible_ref: getVerseRangeDisplay(),
+        meditation_text: memo.content,
+      });
+      if (result.error) {
+        setFeedbackError(result.error);
+      } else {
+        setFeedbackResult(result.data);
+      }
+    } catch {
+      setFeedbackError('피드백 요청 중 오류가 발생했습니다.');
+    } finally {
+      setIsFeedbackLoading(false);
     }
   };
 
@@ -247,7 +320,7 @@ export function MemoDetailScreen({ route, navigation }: Props) {
         <Text style={[styles.headerTitle, { color: colors.text }]}>묵상 상세</Text>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleShare} style={styles.headerActionButton}>
+          <TouchableOpacity onPress={handleShareMenu} style={styles.headerActionButton}>
             <Ionicons name="share-outline" size={22} color={colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleEdit} style={styles.headerActionButton}>
@@ -467,6 +540,110 @@ export function MemoDetailScreen({ route, navigation }: Props) {
                 <Text style={styles.analyzeButtonText}>
                   감정분석 시작하기
                 </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* 묵상 AI 피드백 (SOLAR 10.7B) */}
+        <View style={[styles.emotionCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.emotionHeader}>
+            <View style={styles.emotionHeaderLeft}>
+              <Text style={styles.emotionHeaderIcon}>📖</Text>
+              <Text style={[styles.emotionLabel, { color: colors.text }]}>
+                AI 묵상 피드백
+              </Text>
+            </View>
+            {feedbackResult && (
+              <View style={[styles.confidenceBadge, { backgroundColor: '#10b981' + '15' }]}>
+                <Text style={[styles.confidenceText, { color: '#10b981' }]}>SOLAR</Text>
+              </View>
+            )}
+          </View>
+
+          {isFeedbackLoading ? (
+            <View style={styles.analyzingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.analyzingText, { color: colors.textSecondary }]}>
+                묵상 피드백을 생성하고 있습니다...
+              </Text>
+              <Text style={[styles.analyzingSubText, { color: colors.textSecondary }]}>
+                SOLAR 10.7B 모델 분석 중 (최대 60초)
+              </Text>
+            </View>
+          ) : feedbackResult ? (
+            <>
+              {/* 성경 요약 */}
+              <View style={[styles.feedbackSection, { borderColor: colors.border }]}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>성경 요약</Text>
+                <Text style={[styles.feedbackText, { color: colors.text }]}>{feedbackResult.bible_summary}</Text>
+              </View>
+              {/* 묵상 요약 */}
+              <View style={[styles.feedbackSection, { borderColor: colors.border }]}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>묵상 요약</Text>
+                <Text style={[styles.feedbackText, { color: colors.text }]}>{feedbackResult.meditation_summary}</Text>
+              </View>
+              {/* 중점 포인트 */}
+              {feedbackResult.focus_points.length > 0 && (
+                <View style={styles.keyPhrasesSection}>
+                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>중점 분석</Text>
+                  <View style={styles.keyPhrasesRow}>
+                    {feedbackResult.focus_points.map((point, i) => (
+                      <View key={i} style={[styles.keyPhraseChip, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                        <Text style={[styles.keyPhraseText, { color: colors.text }]}>{point}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {/* 감정 */}
+              {feedbackResult.emotions.length > 0 && (
+                <View style={styles.emotionTagsSection}>
+                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>감지된 감정</Text>
+                  <View style={styles.emotionTagsRow}>
+                    {feedbackResult.emotions.map((em, i) => (
+                      <View key={i} style={[styles.emotionTag, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '40' }]}>
+                        <Text style={[styles.emotionTagText, { color: colors.primary }]}>{em}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {/* 피드백 */}
+              <View style={[styles.feedbackSection, { borderColor: colors.primary, borderLeftWidth: 3 }]}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>멘토 피드백</Text>
+                <Text style={[styles.feedbackText, { color: colors.text, lineHeight: 24 }]}>{feedbackResult.feedback}</Text>
+              </View>
+              {/* 다시 요청 */}
+              <TouchableOpacity
+                style={[styles.analyzeButton, { backgroundColor: colors.primary + '15', marginTop: 12 }]}
+                onPress={handleRequestFeedback}
+              >
+                <Text style={[styles.analyzeButtonText, { color: colors.primary }]}>피드백 다시 받기</Text>
+              </TouchableOpacity>
+            </>
+          ) : feedbackError ? (
+            <View style={styles.beforeAnalyzeContainer}>
+              <Text style={styles.beforeAnalyzeIcon}>⚠️</Text>
+              <Text style={[styles.beforeAnalyzeText, { color: colors.error }]}>{feedbackError}</Text>
+              <TouchableOpacity
+                style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
+                onPress={handleRequestFeedback}
+              >
+                <Text style={styles.analyzeButtonText}>다시 시도</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.beforeAnalyzeContainer}>
+              <Text style={styles.beforeAnalyzeIcon}>✨</Text>
+              <Text style={[styles.beforeAnalyzeText, { color: colors.textSecondary }]}>
+                AI가 묵상 내용을 분석하고{'\n'}깊이 있는 피드백을 드립니다
+              </Text>
+              <TouchableOpacity
+                style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
+                onPress={handleRequestFeedback}
+              >
+                <Text style={styles.analyzeButtonText}>묵상 피드백 받기</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -849,6 +1026,19 @@ const styles = StyleSheet.create({
   ragInfoDivider: {
     width: 1,
     height: 30,
+  },
+  // 피드백 섹션
+  feedbackSection: {
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 12,
+    borderLeftWidth: 1,
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 6,
   },
   // 분석 전 상태
   beforeAnalyzeContainer: {
