@@ -13,7 +13,7 @@
 | 프로젝트명 | BibleApp (성경앱) |
 | 프레임워크 | React Native (Expo) |
 | 문서 생성일 | 2026-01-01 |
-| 문서 버전 | v3.6.0 |
+| 문서 버전 | v3.7.0 |
 | 문서 경로 | `C:/claude/claudeproject/bibleapp/docs/` |
 | 시간 기준 | 한국 표준시 (KST, UTC+9) |
 
@@ -88,6 +88,7 @@
 | 30 | 디버그_ChocoAPI접속테스트수정_20260129_2201.md | 디버그 | Choco API 접속 테스트 엔드포인트 불일치 수정 (/health → /api/health) | 20260129_2201 | `C:/claude/claudeproject/bibleapp/docs/디버그_ChocoAPI접속테스트수정_20260129_2201.md` |
 | 31 | 수정_AI분석결과영구저장_20260131_1000.md | 수정 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 | 20260131_1000 | `C:/claude/claudeproject/bibleapp/docs/수정_AI분석결과영구저장_20260131_1000.md` |
 | 32 | 디버그_AI피드백및히스토리수정_20260131_1100.md | 디버그 | AI 묵상 피드백 무반응 + 범위 구절 텍스트 누락 + 구절 히스토리 빈 결과 수정 | 20260131_1100 | `C:/claude/claudeproject/bibleapp/docs/디버그_AI피드백및히스토리수정_20260131_1100.md` |
+| 33 | 디버그_AI피드백bible_text저장및QT탭UI개선_20260131_1500.md | 디버그 | AI 피드백 bible_text DB 저장 + bundled 폴백 + QT탭 통계/뒤로가기 + 날짜 절대 표시 | 20260131_1500 | `C:/claude/claudeproject/bibleapp/docs/디버그_AI피드백bible_text저장및QT탭UI개선_20260131_1500.md` |
 
 ---
 
@@ -121,6 +122,7 @@
 | 2026-01-29 22:01 | v3.4.0 | 디버그: Choco API 접속 테스트 수정 문서 등록 | Claude Code |
 | 2026-01-31 10:00 | v3.5.0 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 문서 등록 | Claude Code |
 | 2026-01-31 11:00 | v3.6.0 | 디버그: AI 피드백 무반응 + 범위 구절 텍스트 누락 + 히스토리 빈 결과 수정 문서 등록 | Claude Code |
+| 2026-01-31 15:00 | v3.7.0 | 디버그: AI 피드백 bible_text 저장 + bundled 폴백 + QT탭 UI 개선 + 날짜 표시 수정 문서 등록 | Claude Code |
 
 ---
 

@@ -298,6 +298,14 @@ export function MemoEditScreen({ route, navigation }: Props) {
         const verseStart = Math.min(...verseNums);
         const verseEnd = Math.max(...verseNums);
 
+        // 성경 본문 텍스트 합침 (피드백 API용 저장)
+        let bibleTextForSave = '';
+        if (verses.length > 1) {
+          bibleTextForSave = verses.map(v => v.text).join(' ');
+        } else if (verse) {
+          bibleTextForSave = verse.text;
+        }
+
         const newMemoId = await memoService.createMemo({
           verseId: verse.verse_id,
           bibleId: bibleVersion,
@@ -307,6 +315,7 @@ export function MemoEditScreen({ route, navigation }: Props) {
           verseStart,
           verseEnd,
           verseRange: verseRange || undefined,
+          bibleText: bibleTextForSave || undefined,
           content: content.trim(),
           tags: tags.trim() || undefined,
         });

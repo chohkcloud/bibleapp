@@ -8,7 +8,10 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import { MemoStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { useSettingsStore } from '../../store';
@@ -41,7 +44,9 @@ interface BookStat {
   count: number;
 }
 
-export function AnalyticsScreen() {
+type Props = NativeStackScreenProps<MemoStackParamList, 'Analytics'>;
+
+export function AnalyticsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const { language } = useSettingsStore();
 
@@ -152,6 +157,18 @@ export function AnalyticsScreen() {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      {/* 헤더 */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={styles.headerBackButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>묵상 통계</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
+
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         refreshControl={
@@ -329,6 +346,24 @@ export function AnalyticsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  headerBackButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerPlaceholder: {
+    width: 40,
   },
   loadingContainer: {
     flex: 1,

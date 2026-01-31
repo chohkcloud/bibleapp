@@ -465,6 +465,9 @@ class DatabaseService {
     if (!columnNames.includes('feedback_data')) {
       await udb.execAsync('ALTER TABLE memos ADD COLUMN feedback_data TEXT;');
     }
+    if (!columnNames.includes('bible_text')) {
+      await udb.execAsync('ALTER TABLE memos ADD COLUMN bible_text TEXT;');
+    }
 
     // AI 분석 히스토리 테이블
     await udb.execAsync(`

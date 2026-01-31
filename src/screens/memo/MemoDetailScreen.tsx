@@ -19,6 +19,7 @@ import { LinkedText, VersePopup } from '../../components/memo';
 import { useSettingsStore } from '../../store';
 import { Linking } from 'react-native';
 import { memoService, bibleService, chocoService } from '../../services';
+import { bundledBibleService } from '../../services/bundledBibleService';
 import type { HybridEmotionResult, MeditationFeedbackResult } from '../../services/chocoService';
 import type { Memo, Verse } from '../../types/database';
 import type { ParsedBibleRef } from '../../utils/bibleRefParser';
@@ -70,20 +71,41 @@ export function MemoDetailScreen({ route, navigation }: Props) {
       const book = books.find((b) => b.book_id === memoData.book_id);
       setBookName(book?.book_name || `${memoData.book_id}권`);
 
-      // 구절 로드 (범위 묵상인 경우 전체 구절 텍스트 합침)
-      const verseData = await bibleService.getVerse(
-        bibleVersion,
-        memoData.book_id,
-        memoData.chapter,
-        memoData.verse_num
-      );
+      // 구절 로드 (번들 버전 폴백 포함)
+      const getVerseAny = async (version: string, bookId: number, chap: number, vn: number): Promise<Verse | null> => {
+        // 번들 버전이면 bundledBibleService에서 먼저 조회
+        if (bundledBibleService.isBundled(version)) {
+          const bv = bundledBibleService.getVerse(version, bookId, chap, vn);
+          if (bv) return {
+            verse_id: bv.bookId * 1000000 + bv.chapter * 1000 + bv.verse,
+            bible_id: version, book_id: bv.bookId, chapter: bv.chapter, verse_num: bv.verse, text: bv.text,
+          };
+        }
+        // DB 조회
+        return await bibleService.getVerse(version, bookId, chap, vn);
+      };
+
+      let verseData = await getVerseAny(bibleVersion, memoData.book_id, memoData.chapter, memoData.verse_num);
+      // 현재 버전으로 못 찾으면 메모 저장 시점 버전으로 폴백
+      if (!verseData && memoData.bible_id && memoData.bible_id !== bibleVersion) {
+        verseData = await getVerseAny(memoData.bible_id, memoData.book_id, memoData.chapter, memoData.verse_num);
+      }
+      // KRV 폴백
+      if (!verseData && bibleVersion !== 'KRV' && memoData.bible_id !== 'KRV') {
+        verseData = await getVerseAny('KRV', memoData.book_id, memoData.chapter, memoData.verse_num);
+      }
       setVerse(verseData);
 
       // 범위 구절이면 전체 텍스트 합침 (피드백 API용)
-      if (memoData.verse_range && memoData.verse_start && memoData.verse_end) {
+      // memo.bible_text가 있으면 우선 사용 (생성 시점 저장된 텍스트)
+      if (memoData.bible_text) {
+        setFullVerseText(memoData.bible_text);
+      } else if (memoData.verse_range && memoData.verse_start && memoData.verse_end) {
         const verseTexts: string[] = [];
         for (let vn = memoData.verse_start; vn <= memoData.verse_end; vn++) {
-          const v = await bibleService.getVerse(bibleVersion, memoData.book_id, memoData.chapter, vn);
+          const v = await getVerseAny(bibleVersion, memoData.book_id, memoData.chapter, vn)
+                 || await getVerseAny(memoData.bible_id, memoData.book_id, memoData.chapter, vn)
+                 || await getVerseAny('KRV', memoData.book_id, memoData.chapter, vn);
           if (v) verseTexts.push(v.text);
         }
         setFullVerseText(verseTexts.join(' '));

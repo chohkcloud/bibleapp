@@ -70,6 +70,7 @@ export interface Memo {
   updated_at: string;
   is_deleted: number;     // Soft delete
   tags?: string;          // JOIN 결과
+  bible_text?: string | null;      // 생성 시점 성경 본문 (피드백용)
   emotion_data?: string | null;    // AI 감정분석 결과 JSON
   feedback_data?: string | null;   // AI 묵상 피드백 결과 JSON
 }
@@ -162,6 +163,7 @@ export interface CreateMemoDto {
   verse_start?: number;    // 다중 구절: 시작 절
   verse_end?: number;      // 다중 구절: 끝 절
   verse_range?: string;    // 다중 구절: 범위 문자열
+  bible_text?: string;     // 생성 시점 성경 본문
   content: string;
   tags?: number[];
 }

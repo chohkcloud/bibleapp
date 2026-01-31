@@ -60,6 +60,7 @@ interface CreateMemoInput {
   verseStart?: number;    // 범위 선택 시 시작 절
   verseEnd?: number;      // 범위 선택 시 끝 절
   verseRange?: string;    // 범위 문자열 (예: "1-16")
+  bibleText?: string;     // 생성 시점 성경 본문 (피드백용)
   content: string;
   tagIds?: number[];
   tags?: string;
@@ -108,6 +109,7 @@ class MemoService {
         verse_start: input.verseStart,
         verse_end: input.verseEnd,
         verse_range: input.verseRange,
+        bible_text: input.bibleText,
         content: encryptedContent,
         tags: input.tagIds,
       };

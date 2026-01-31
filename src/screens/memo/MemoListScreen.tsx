@@ -15,7 +15,8 @@ import { MemoStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 import { SafeContainer } from '../../components/layout';
 import { useSettingsStore } from '../../store';
-import { memoService, bibleService } from '../../services';
+import { Ionicons } from '@expo/vector-icons';
+import { memoService, bibleService, analyticsService } from '../../services';
 import type { Memo } from '../../types/database';
 
 type Props = NativeStackScreenProps<MemoStackParamList, 'MemoList'>;
@@ -31,6 +32,7 @@ export function MemoListScreen({ navigation }: Props) {
   const [memos, setMemos] = useState<Memo[]>([]);
   const [bookNames, setBookNames] = useState<Record<number, string>>({});
   const [filter, setFilter] = useState<FilterType>('all');
+  const [stats, setStats] = useState({ totalMemos: 0, streakDays: 0, thisWeekMemos: 0, thisMonthMemos: 0 });
 
   // 데이터 로드
   const loadData = useCallback(async () => {
@@ -46,6 +48,12 @@ export function MemoListScreen({ navigation }: Props) {
       // 메모 목록 로드
       const memoList = await memoService.getMemos(undefined, 100, 0);
       setMemos(memoList);
+
+      // 콤팩트 통계 로드
+      try {
+        const summaryData = await analyticsService.getSummary();
+        setStats(summaryData);
+      } catch { /* 통계 로드 실패 무시 */ }
     } catch (error) {
       console.error('Error loading memos:', error);
     } finally {
@@ -101,19 +109,15 @@ export function MemoListScreen({ navigation }: Props) {
     navigation.navigate('Analytics');
   };
 
-  // 날짜 포맷
+  // 날짜 포맷 (절대 날짜/시간)
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffHours < 1) return '방금 전';
-    if (diffHours < 24) return `${diffHours}시간 전`;
-    if (diffDays === 1) return '어제';
-    if (diffDays < 7) return `${diffDays}일 전`;
-    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}.${m}.${d} ${h}:${min}`;
   };
 
   // 구절 범위 표시 문자열 생성
@@ -242,6 +246,29 @@ export function MemoListScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* 콤팩트 통계 요약 */}
+        <View style={[styles.compactStats, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{stats.totalMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>총묵상</Text>
+          </View>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{stats.streakDays}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>연속일</Text>
+          </View>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{stats.thisWeekMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>이번주</Text>
+          </View>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{stats.thisMonthMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>이번달</Text>
+          </View>
+        </View>
+
         {/* 메모 개수 */}
         <View style={styles.countContainer}>
           <Text style={[styles.countText, { color: colors.textSecondary }]}>
@@ -317,6 +344,30 @@ const styles = StyleSheet.create({
   analyticsButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  compactStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+  },
+  compactStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  compactStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  compactStatLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  compactStatDivider: {
+    width: 1,
+    height: 24,
   },
   countContainer: {
     paddingHorizontal: 16,
