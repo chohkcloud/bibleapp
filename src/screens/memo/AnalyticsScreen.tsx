@@ -180,35 +180,26 @@ export function AnalyticsScreen({ navigation }: Props) {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* 요약 카드 */}
-        <View style={styles.summaryGrid}>
-          <View style={[styles.summaryCard, { backgroundColor: colors.primary }]}>
-            <Text style={styles.summaryValue}>{summary.totalMemos}</Text>
-            <Text style={styles.summaryLabel}>총 묵상</Text>
+        {/* 요약 바 (한 줄 콤팩트) */}
+        <View style={[styles.compactStatsBar, { backgroundColor: colors.surface }]}>
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{summary.totalMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>총묵상</Text>
           </View>
-          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>
-              {summary.streakDays}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
-              연속 일수
-            </Text>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{summary.streakDays}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>연속일</Text>
           </View>
-          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>
-              {summary.thisWeekMemos}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
-              이번 주
-            </Text>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{summary.thisWeekMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>이번주</Text>
           </View>
-          <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>
-              {summary.thisMonthMemos}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
-              이번 달
-            </Text>
+          <View style={[styles.compactStatDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.compactStatItem}>
+            <Text style={[styles.compactStatValue, { color: colors.primary }]}>{summary.thisMonthMemos}</Text>
+            <Text style={[styles.compactStatLabel, { color: colors.textSecondary }]}>이번달</Text>
           </View>
         </View>
 
@@ -374,27 +365,31 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
   },
-  summaryGrid: {
+  compactStatsBar: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 12,
-  },
-  summaryCard: {
-    width: '47%',
-    padding: 16,
-    borderRadius: 12,
     alignItems: 'center',
-    margin: 6,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
   },
-  summaryValue: {
-    fontSize: 32,
+  compactStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  compactStatValue: {
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 4,
+  compactStatLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  compactStatDivider: {
+    width: 1,
+    height: 28,
   },
   card: {
     marginHorizontal: 16,

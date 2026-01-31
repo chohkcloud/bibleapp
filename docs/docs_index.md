@@ -13,7 +13,7 @@
 | 프로젝트명 | BibleApp (성경앱) |
 | 프레임워크 | React Native (Expo) |
 | 문서 생성일 | 2026-01-01 |
-| 문서 버전 | v3.7.0 |
+| 문서 버전 | v3.8.0 |
 | 문서 경로 | `C:/claude/claudeproject/bibleapp/docs/` |
 | 시간 기준 | 한국 표준시 (KST, UTC+9) |
 
@@ -89,6 +89,8 @@
 | 31 | 수정_AI분석결과영구저장_20260131_1000.md | 수정 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 | 20260131_1000 | `C:/claude/claudeproject/bibleapp/docs/수정_AI분석결과영구저장_20260131_1000.md` |
 | 32 | 디버그_AI피드백및히스토리수정_20260131_1100.md | 디버그 | AI 묵상 피드백 무반응 + 범위 구절 텍스트 누락 + 구절 히스토리 빈 결과 수정 | 20260131_1100 | `C:/claude/claudeproject/bibleapp/docs/디버그_AI피드백및히스토리수정_20260131_1100.md` |
 | 33 | 디버그_AI피드백bible_text저장및QT탭UI개선_20260131_1500.md | 디버그 | AI 피드백 bible_text DB 저장 + bundled 폴백 + QT탭 통계/뒤로가기 + 날짜 절대 표시 | 20260131_1500 | `C:/claude/claudeproject/bibleapp/docs/디버그_AI피드백bible_text저장및QT탭UI개선_20260131_1500.md` |
+| 34 | 디버그_백업실패및통계UI및히스토리헤더_20260131_1600.md | 디버그 | 백업 실패 수정 (expo-file-system v19) + 통계 콤팩트 UI + 히스토리 뒤로가기 | 20260131_1600 | `C:/claude/claudeproject/bibleapp/docs/디버그_백업실패및통계UI및히스토리헤더_20260131_1600.md` |
+| 35 | TODO.md | 메뉴얼 | TODO 관리 (발견 이슈 추적) | 20260131 | `C:/claude/claudeproject/bibleapp/docs/TODO.md` |
 
 ---
 
@@ -123,6 +125,7 @@
 | 2026-01-31 10:00 | v3.5.0 | 19단계: AI 분석 결과 영구 저장 + 히스토리 관리 문서 등록 | Claude Code |
 | 2026-01-31 11:00 | v3.6.0 | 디버그: AI 피드백 무반응 + 범위 구절 텍스트 누락 + 히스토리 빈 결과 수정 문서 등록 | Claude Code |
 | 2026-01-31 15:00 | v3.7.0 | 디버그: AI 피드백 bible_text 저장 + bundled 폴백 + QT탭 UI 개선 + 날짜 표시 수정 문서 등록 | Claude Code |
+| 2026-01-31 16:00 | v3.8.0 | 디버그: 백업 실패 수정 (expo-file-system v19) + 통계 콤팩트 UI + 히스토리 뒤로가기 + TODO 문서 등록 | Claude Code |
 
 ---
 

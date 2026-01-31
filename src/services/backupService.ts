@@ -2,6 +2,8 @@
 // 묵상노트 백업/복원 서비스
 
 import { Platform, Alert } from 'react-native';
+import { Paths, File } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { databaseService } from './database';
 import { authService } from './authService';
 import { decrypt, encrypt } from '../utils/crypto';
@@ -22,6 +24,8 @@ interface BackupMemo {
   content: string; // 복호화된 내용
   tags: string | null;
   emotion_data?: string | null;
+  feedback_data?: string | null;
+  bible_text?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -115,6 +119,8 @@ class BackupService {
             content,
             tags: memo.tags,
             emotion_data: memo.emotion_data ?? null,
+            feedback_data: memo.feedback_data ?? null,
+            bible_text: memo.bible_text ?? null,
             created_at: memo.created_at,
             updated_at: memo.updated_at,
           };
@@ -156,31 +162,26 @@ class BackupService {
       // JSON 문자열로 변환
       const jsonString = JSON.stringify(backupData, null, 2);
 
-      // 파일 저장
-      const FileSystem = require('expo-file-system');
-      const Sharing = require('expo-sharing');
-
+      // 파일 저장 (expo-file-system v19 새 API)
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const fileName = `BibleApp_Backup_${timestamp}.json`;
-      const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+      const backupFile = new File(Paths.cache, fileName);
 
-      await FileSystem.writeAsStringAsync(filePath, jsonString, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      backupFile.write(jsonString);
 
       // 공유 다이얼로그 열기
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(filePath, {
+        await Sharing.shareAsync(backupFile.uri, {
           mimeType: 'application/json',
           dialogTitle: '묵상노트 백업 파일 저장',
           UTI: 'public.json',
         });
       }
 
-      return filePath;
-    } catch (error) {
+      return backupFile.uri;
+    } catch (error: any) {
       console.error('[BackupService] 백업 실패:', error);
-      Alert.alert('백업 실패', '백업 파일 생성 중 오류가 발생했습니다.');
+      Alert.alert('백업 실패', `백업 파일 생성 중 오류가 발생했습니다.\n${error?.message || ''}`);
       return null;
     }
   }
@@ -196,7 +197,6 @@ class BackupService {
 
     try {
       const DocumentPicker = require('expo-document-picker');
-      const FileSystem = require('expo-file-system');
 
       // 파일 선택
       const result = await DocumentPicker.getDocumentAsync({
@@ -210,10 +210,9 @@ class BackupService {
 
       const fileUri = result.assets[0].uri;
 
-      // 파일 읽기
-      const jsonString = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // 파일 읽기 (expo-file-system v19 새 API)
+      const pickedFile = new File(fileUri);
+      const jsonString = await pickedFile.text();
 
       // JSON 파싱
       const backupData: BackupData = JSON.parse(jsonString);
@@ -279,8 +278,8 @@ class BackupService {
         const encryptedContent = await encrypt(memo.content, encryptionKey);
         await db.runAsync(
           `INSERT OR REPLACE INTO memos
-           (memo_id, verse_id, bible_id, book_id, chapter, verse_num, verse_start, verse_end, verse_range, content, tags, emotion_data, is_encrypted, created_at, updated_at, is_deleted)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)`,
+           (memo_id, verse_id, bible_id, book_id, chapter, verse_num, verse_start, verse_end, verse_range, content, tags, emotion_data, feedback_data, bible_text, is_encrypted, created_at, updated_at, is_deleted)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)`,
           [
             memo.memo_id,
             memo.verse_id,
@@ -294,6 +293,8 @@ class BackupService {
             encryptedContent,
             memo.tags,
             memo.emotion_data ?? null,
+            memo.feedback_data ?? null,
+            memo.bible_text ?? null,
             memo.created_at || now,
             memo.updated_at || now,
           ]

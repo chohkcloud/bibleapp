@@ -164,6 +164,17 @@ export function VerseHistoryScreen({ route, navigation }: Props) {
 
   return (
     <SafeContainer edges={['top', 'bottom']}>
+      {/* 헤더 */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={styles.headerBackButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>묵상 히스토리</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* 구절 카드 */}
         {verseInfo && (
@@ -213,6 +224,24 @@ export function VerseHistoryScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  headerBackButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerPlaceholder: {
+    width: 40,
+  },
   container: {
     flex: 1,
   },
